@@ -1,0 +1,44 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "Snap Launcher",
+	"Version": "1.1.0.0",
+	"Author": "Bower Studio",
+	"Description": "Launch apps and snap their windows to saved positions across your monitors.",
+	"Category": "Snap Launcher",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"Icon": "imgs/plugin/marketplace",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 2,
+	"UUID": "com.bowerstudio.snap-launcher",
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "24",
+		"Debug": "enabled"
+	},
+	"Actions": [
+		{
+			"Name": "Launch & Position",
+			"UUID": "com.bowerstudio.snap-launcher.launch",
+			"Icon": "imgs/actions/launch/icon",
+			"Tooltip": "Launch or focus an app and move its window to a saved position.",
+			"PropertyInspectorPath": "ui/launch.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/launch/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		}
+	]
+}

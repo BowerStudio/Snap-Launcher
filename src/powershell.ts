@@ -770,7 +770,7 @@ export function runPowerShell<T>(script: string, timeoutMs: number): Promise<T> 
 	let scriptDir: string;
 	let scriptFile: string;
 	try {
-		scriptDir = mkdtempSync(path.join(tmpdir(), "window-launcher-"));
+		scriptDir = mkdtempSync(path.join(tmpdir(), "snap-launcher-"));
 		scriptFile = path.join(scriptDir, `run-${randomBytes(6).toString("hex")}.ps1`);
 		// Prepend a UTF-8 BOM: PS 5.1 assumes ANSI for BOM-less files.
 		writeFileSync(scriptFile, String.fromCharCode(0xfeff) + script, "utf8");

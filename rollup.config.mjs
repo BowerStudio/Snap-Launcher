@@ -6,7 +6,7 @@ import path from "node:path";
 import url from "node:url";
 
 const isWatching = !!process.env.ROLLUP_WATCH;
-const sdPlugin = "com.myorg.snap-launcher.sdPlugin";
+const sdPlugin = "com.bowerstudio.snap-launcher.sdPlugin";
 
 /**
  * @type {import('rollup').RollupOptions}

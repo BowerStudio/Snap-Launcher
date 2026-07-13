@@ -1,6 +1,6 @@
 node_modules/
 *.log
-com.myorg.window-launcher.sdPlugin/bin/
-com.myorg.window-launcher.sdPlugin/logs/
+com.bowerstudio.snap-launcher.sdPlugin/bin/
+com.bowerstudio.snap-launcher.sdPlugin/logs/
 *.streamDeckPlugin
 .DS_Store

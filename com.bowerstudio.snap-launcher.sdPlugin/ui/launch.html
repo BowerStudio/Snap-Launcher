@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Launch &amp; Position</title>
+		<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+	</head>
+	<body>
+		<!-- Both the dropdown and the file picker write to the same "appPath"
+		     setting: pick a running app OR browse to an .exe/.lnk. -->
+		<sdpi-item label="Running apps">
+			<sdpi-select
+				setting="appPath"
+				datasource="getRunningApps"
+				show-refresh
+				loading="Scanning windows…"
+				placeholder="Pick a running app (or browse below)"
+			></sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="App path">
+			<sdpi-file setting="appPath" accept=".exe,.lnk,.bat,.cmd"></sdpi-file>
+		</sdpi-item>
+
+		<sdpi-item label="Arguments">
+			<sdpi-textfield setting="launchArgs" placeholder="Optional command-line arguments"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Title contains">
+			<sdpi-textfield setting="titleFilter" placeholder="Optional window-title filter"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Process name">
+			<sdpi-textfield setting="processName" placeholder="Optional override, e.g. WindowsTerminal"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="If already running">
+			<sdpi-checkbox setting="focusIfRunning" label="Reuse the existing window instead of launching again"></sdpi-checkbox>
+		</sdpi-item>
+
+		<sdpi-item label="Positioning">
+			<sdpi-select setting="positionMode">
+				<option value="custom">Custom position (capture / manual)</option>
+				<option value="zone">Monitor &amp; snap zone</option>
+				<option value="none">Don't move the window</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Monitor" class="zone-only" hidden>
+			<sdpi-select
+				setting="monitorId"
+				datasource="getMonitors"
+				show-refresh
+				loading="Detecting monitors…"
+				placeholder="Primary monitor"
+			></sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Zone" class="zone-only" hidden>
+			<sdpi-select setting="zone">
+				<option value="full">Full screen</option>
+				<option value="left">Left half</option>
+				<option value="right">Right half</option>
+				<option value="top">Top half</option>
+				<option value="bottom">Bottom half</option>
+				<option value="topLeft">Top-left quarter</option>
+				<option value="topRight">Top-right quarter</option>
+				<option value="bottomLeft">Bottom-left quarter</option>
+				<option value="bottomRight">Bottom-right quarter</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="X" class="custom-only">
+			<sdpi-textfield setting="x" placeholder="e.g. 2560 (negative = monitor left of primary)"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Y" class="custom-only">
+			<sdpi-textfield setting="y" placeholder="e.g. 0"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Width" class="custom-only">
+			<sdpi-textfield setting="width" placeholder="e.g. 1280"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Height" class="custom-only">
+			<sdpi-textfield setting="height" placeholder="e.g. 800"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item class="custom-only">
+			<sdpi-button onclick="SDPIComponents.streamDeckClient.send('sendToPlugin', { event: 'captureWindow' });">
+				Capture current window position &amp; size
+			</sdpi-button>
+		</sdpi-item>
+
+		<sdpi-item label="Status" class="custom-only">
+			<sdpi-textfield setting="captureStatus" disabled></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Wait (seconds)">
+			<sdpi-textfield setting="waitSeconds" placeholder="10"></sdpi-textfield>
+		</sdpi-item>
+
+		<script>
+			// sdpi-select doesn't re-emit change events across its shadow DOM, so
+			// keep row visibility in sync with a light poll while the PI is open.
+			function applyModeVisibility() {
+				const select = document.querySelector('sdpi-select[setting="positionMode"]');
+				const mode = (select && select.value) || "custom";
+				document.querySelectorAll(".zone-only").forEach((el) => (el.hidden = mode !== "zone"));
+				document.querySelectorAll(".custom-only").forEach((el) => (el.hidden = mode !== "custom"));
+			}
+			window.addEventListener("DOMContentLoaded", () => {
+				applyModeVisibility();
+				setInterval(applyModeVisibility, 300);
+			});
+		</script>
+	</body>
+</html>

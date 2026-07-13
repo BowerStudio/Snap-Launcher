@@ -29,7 +29,7 @@ type SettingsHolder = {
 	setSettings(settings: LaunchSettings): Promise<void>;
 };
 
-@action({ UUID: "com.myorg.window-launcher.launch" })
+@action({ UUID: "com.bowerstudio.snap-launcher.launch" })
 export class LaunchApp extends SingletonAction<LaunchSettings> {
 	/** Friendly names of the apps offered in the last Running-apps scan, by value. */
 	private appNames = new Map<string, string>();

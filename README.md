@@ -71,13 +71,13 @@ StreamDeckWindowResize\
 │   ├── powershell.ts                     PowerShell script builders + runner
 │   └── actions\launch-app.ts             the Launch & Position action
 ├── tests\                                node:test suite (zone math, monitors, settings)
-├── com.myorg.window-launcher.sdPlugin\   the plugin bundle Stream Deck loads
+├── com.bowerstudio.snap-launcher.sdPlugin\   the plugin bundle Stream Deck loads
 │   ├── manifest.json                     plugin metadata (name, version, UUID)
 │   ├── ui\launch.html                    Property Inspector (key settings UI)
 │   ├── imgs\                             icons
 │   └── bin\plugin.js                     build output (generated — don't edit)
 ├── package.json / rollup.config.mjs / tsconfig.json
-└── com.myorg.window-launcher.streamDeckPlugin   packed release (generated)
+└── com.bowerstudio.snap-launcher.streamDeckPlugin   packed release (generated)
 ```
 
 ## Development
@@ -89,14 +89,14 @@ First-time setup — install dependencies, build, and link the plugin folder int
 ```bash
 npm install
 npm run build
-streamdeck link com.myorg.window-launcher.sdPlugin
+streamdeck link com.bowerstudio.snap-launcher.sdPlugin
 ```
 
 After that, deploying a change is just:
 
 ```bash
 npm run build
-streamdeck restart com.myorg.window-launcher
+streamdeck restart com.bowerstudio.snap-launcher
 ```
 
 Or use `npm run watch`, which rebuilds on save and restarts the plugin automatically.
@@ -109,23 +109,23 @@ npm test
 
 The suite runs the plugin's actual embedded PowerShell (zone math against real work-area rectangles, live monitor enumeration, settings migration), so it takes ~20 seconds and must run on Windows. The `tests/**/*.test.ts` glob in the test script is deliberate — `node --test tests/` (bare directory) does not work here.
 
-Logs live in `com.myorg.window-launcher.sdPlugin/logs/`.
+Logs live in `com.bowerstudio.snap-launcher.sdPlugin/logs/`.
 
 ## Packaging a release
 
 ```bash
 npm run build
-streamdeck pack com.myorg.window-launcher.sdPlugin
+streamdeck pack com.bowerstudio.snap-launcher.sdPlugin
 ```
 
-This produces `com.myorg.window-launcher.streamDeckPlugin` in the project root — that file is the installer to share; double-clicking it on another machine installs the plugin.
+This produces `com.bowerstudio.snap-launcher.streamDeckPlugin` in the project root — that file is the installer to share; double-clicking it on another machine installs the plugin.
 
 ⚠️ Don't double-click the packed file on **this** machine while the dev version is linked — it's the same UUID and Stream Deck will refuse (or fight the link). Unlink first if you want to test the packed install here.
 
 Before publishing:
 
-1. Bump the version in `com.myorg.window-launcher.sdPlugin/manifest.json` (`Version`, four segments, e.g. `1.2.0.0`) and keep `package.json`'s `version` in step.
-2. Replace the placeholder UUID `com.myorg.window-launcher` with your own reverse-DNS identifier **everywhere** — it is permanent once published:
+1. Bump the version in `com.bowerstudio.snap-launcher.sdPlugin/manifest.json` (`Version`, four segments, e.g. `1.2.0.0`) and keep `package.json`'s `version` in step.
+2. Replace the placeholder UUID `com.bowerstudio.snap-launcher` with your own reverse-DNS identifier **everywhere** — it is permanent once published:
    - `manifest.json` → `UUID` and the action's `UUID`
    - `src/actions/launch-app.ts` → the `@action({ UUID: … })` decorator
    - the `.sdPlugin` folder name, `rollup.config.mjs` → `sdPlugin` constant, and the `streamdeck restart` name in `package.json`
