@@ -29,10 +29,35 @@ export type LaunchConfig = {
 	y: number;
 	width: number;
 	height: number;
+	/**
+	 * Virtual desktop to run the app on (created if missing, switched to on
+	 * press). A desktop name, matched case-insensitively; "Desktop N" targets
+	 * the Nth desktop. Empty = current desktop (feature off).
+	 */
+	virtualDesktop: string;
 };
 
 export type LaunchResult =
-	| { ok: true; launched: boolean; positioned: boolean; pid: number; title: string }
+	| { ok: true; launched: boolean; positioned: boolean; movedDesktop: boolean; pid: number; title: string }
+	| { ok: false; error: string };
+
+export type CloseMode = "close" | "closeThenKill" | "kill";
+
+/**
+ * Configuration for the Close App action. appPath/titleFilter/processName
+ * identify windows exactly like LaunchConfig does (FIND_WINDOW is shared).
+ */
+export type CloseConfig = {
+	appPath: string;
+	titleFilter: string;
+	processName: string;
+	closeMode: CloseMode;
+	/** closeThenKill only: grace period before force-quitting. */
+	waitSeconds: number;
+};
+
+export type CloseResult =
+	| { ok: true; found: number; closed: number; killed: number }
 	| { ok: false; error: string };
 
 export type CaptureResult =
@@ -114,6 +139,9 @@ public static class Native {
 
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
@@ -418,6 +446,257 @@ function Resolve-TargetMonitor($monitors, [string]$monitorId) {
 `;
 
 /**
+ * Virtual-desktop control via the shell's internal COM interfaces (there is
+ * no documented API to enumerate, create, or switch desktops, or to move
+ * another process's window between them). Interface definitions are derived
+ * from MScholtes/VirtualDesktop (MIT, https://github.com/MScholtes/VirtualDesktop).
+ *
+ * The IIDs below are shared by all current Windows 11 builds, but 24H2
+ * (build 26100+) inserted SwitchDesktopAndMoveForegroundView into the middle
+ * of IVirtualDesktopManagerInternal's vtable WITHOUT changing its IID — so
+ * both layouts are declared and the build number picks the right one at
+ * runtime. Windows 10 uses different IIDs entirely and is rejected with a
+ * clear error. Interfaces are truncated after the last slot actually called;
+ * IApplicationView is a pure opaque handle (never invoked, only passed).
+ *
+ * Exported for tests; included in the launch script only when a virtual
+ * desktop is configured, so ordinary keys skip the extra Add-Type compile.
+ */
+export const VDESK = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+namespace SnapVD {
+
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("6D5140C1-7436-11CE-8034-00AA006009FA")]
+public interface IServiceProvider10 {
+    [return: MarshalAs(UnmanagedType.IUnknown)]
+    object QueryService(ref Guid service, ref Guid riid);
+}
+
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("92CA9DCD-5622-4BBA-A805-5E9F541BD8C9")]
+public interface IObjectArray {
+    void GetCount(out int count);
+    void GetAt(int index, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out object obj);
+}
+
+// Opaque handle: obtained from GetViewForHwnd, passed to MoveViewToDesktop,
+// never invoked - so no methods need declaring.
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIInspectable)] [Guid("372E1D3B-38D3-42E4-A15B-8AB2B178F513")]
+public interface IApplicationView {
+}
+
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("1841C6D7-4F9D-42C0-AF41-8747538F10E5")]
+public interface IApplicationViewCollection {
+    int GetViews(out IObjectArray array);
+    int GetViewsByZOrder(out IObjectArray array);
+    int GetViewsByAppUserModelId(string id, out IObjectArray array);
+    int GetViewForHwnd(IntPtr hwnd, out IApplicationView view);
+}
+
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("3F07F4BE-B107-441A-AF0F-39D82529072C")]
+public interface IVirtualDesktop {
+    bool IsViewVisible(IApplicationView view);
+    Guid GetId();
+    [return: MarshalAs(UnmanagedType.HString)]
+    string GetName();
+}
+
+// Documented shell object: only reliable for asking which desktop a window is on.
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("A5CD92FF-29BE-454C-8D04-D82879FB3F1B")]
+public interface IVirtualDesktopManager {
+    bool IsWindowOnCurrentVirtualDesktop(IntPtr topLevelWindow);
+    Guid GetWindowDesktopId(IntPtr topLevelWindow);
+    void MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
+}
+
+// Pre-24H2 Windows 11 vtable.
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("53F5CA0B-158F-4124-900C-057158060B27")]
+public interface IVdmiWin11 {
+    int GetCount();
+    void MoveViewToDesktop(IApplicationView view, IVirtualDesktop desktop);
+    bool CanViewMoveDesktops(IApplicationView view);
+    IVirtualDesktop GetCurrentDesktop();
+    void GetDesktops(out IObjectArray desktops);
+    [PreserveSig] int GetAdjacentDesktop(IVirtualDesktop from, int direction, out IVirtualDesktop desktop);
+    void SwitchDesktop(IVirtualDesktop desktop);
+    IVirtualDesktop CreateDesktop();
+    void MoveDesktop(IVirtualDesktop desktop, int nIndex);
+    void RemoveDesktop(IVirtualDesktop desktop, IVirtualDesktop fallback);
+    IVirtualDesktop FindDesktop(ref Guid desktopid);
+    void GetDesktopSwitchIncludeExcludeViews(IVirtualDesktop desktop, out IObjectArray u1, out IObjectArray u2);
+    void SetDesktopName(IVirtualDesktop desktop, [MarshalAs(UnmanagedType.HString)] string name);
+}
+
+// 24H2+ vtable: SwitchDesktopAndMoveForegroundView appeared after SwitchDesktop.
+[ComImport] [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] [Guid("53F5CA0B-158F-4124-900C-057158060B27")]
+public interface IVdmi24H2 {
+    int GetCount();
+    void MoveViewToDesktop(IApplicationView view, IVirtualDesktop desktop);
+    bool CanViewMoveDesktops(IApplicationView view);
+    IVirtualDesktop GetCurrentDesktop();
+    void GetDesktops(out IObjectArray desktops);
+    [PreserveSig] int GetAdjacentDesktop(IVirtualDesktop from, int direction, out IVirtualDesktop desktop);
+    void SwitchDesktop(IVirtualDesktop desktop);
+    void SwitchDesktopAndMoveForegroundView(IVirtualDesktop desktop);
+    IVirtualDesktop CreateDesktop();
+    void MoveDesktop(IVirtualDesktop desktop, int nIndex);
+    void RemoveDesktop(IVirtualDesktop desktop, IVirtualDesktop fallback);
+    IVirtualDesktop FindDesktop(ref Guid desktopid);
+    void GetDesktopSwitchIncludeExcludeViews(IVirtualDesktop desktop, out IObjectArray u1, out IObjectArray u2);
+    void SetDesktopName(IVirtualDesktop desktop, [MarshalAs(UnmanagedType.HString)] string name);
+}
+
+public static class VDesk {
+    static IVdmiWin11 _old;
+    static IVdmi24H2 _new;
+    static IApplicationViewCollection _views;
+    static IVirtualDesktopManager _mgr;
+    static bool _modern;
+    static bool _ready;
+
+    // Sentinel desktop ids for windows/apps pinned to every desktop.
+    static readonly Guid AppOnAllDesktops = new Guid("BB64D5B7-4DE3-4AB2-A87C-DB7601AEA7DC");
+    static readonly Guid WindowOnAllDesktops = new Guid("C2DDEA68-66F2-4CF9-8264-1BFD00FBBBAC");
+
+    public static void Init() {
+        if (_ready) return;
+        int build = 0;
+        try {
+            using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey("SOFTWARE\\\\Microsoft\\\\Windows NT\\\\CurrentVersion"))
+                build = int.Parse((string)k.GetValue("CurrentBuildNumber"));
+        } catch { }
+        if (build == 0) build = Environment.OSVersion.Version.Build;
+        if (build < 22000) throw new NotSupportedException("Virtual desktop control needs Windows 11 (build 22000 or later); this is build " + build + ".");
+        _modern = build >= 26100;
+        var shell = (IServiceProvider10)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("C2F03A33-21F5-47FA-B4BB-156362A2F239")));
+        Guid clsidInternal = new Guid("C5E0CDCA-7B6E-41B2-9FC4-D93975CC467B");
+        if (_modern) {
+            Guid iid = typeof(IVdmi24H2).GUID;
+            _new = (IVdmi24H2)shell.QueryService(ref clsidInternal, ref iid);
+        } else {
+            Guid iid = typeof(IVdmiWin11).GUID;
+            _old = (IVdmiWin11)shell.QueryService(ref clsidInternal, ref iid);
+        }
+        Guid viewsIid = typeof(IApplicationViewCollection).GUID;
+        _views = (IApplicationViewCollection)shell.QueryService(ref viewsIid, ref viewsIid);
+        _mgr = (IVirtualDesktopManager)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("AA509086-5CA9-4C25-8F95-589D3C07B48A")));
+        _ready = true;
+    }
+
+    public static int Count { get { return _modern ? _new.GetCount() : _old.GetCount(); } }
+
+    static IVirtualDesktop At(int index) {
+        IObjectArray arr;
+        if (_modern) _new.GetDesktops(out arr); else _old.GetDesktops(out arr);
+        Guid iid = typeof(IVirtualDesktop).GUID;
+        object o;
+        arr.GetAt(index, ref iid, out o);
+        Marshal.ReleaseComObject(arr);
+        return (IVirtualDesktop)o;
+    }
+
+    static string NameAt(int index) {
+        string n = null;
+        try { n = At(index).GetName(); } catch { }
+        if (string.IsNullOrEmpty(n)) n = "Desktop " + (index + 1);
+        return n;
+    }
+
+    public static List<string> List() {
+        var r = new List<string>();
+        int c = Count;
+        for (int i = 0; i < c; i++) r.Add(NameAt(i));
+        return r;
+    }
+
+    public static int CurrentIndex() {
+        Guid cur = (_modern ? _new.GetCurrentDesktop() : _old.GetCurrentDesktop()).GetId();
+        int c = Count;
+        for (int i = 0; i < c; i++) if (At(i).GetId() == cur) return i;
+        return -1;
+    }
+
+    public static int FindByName(string name) {
+        name = name.Trim();
+        int c = Count;
+        for (int i = 0; i < c; i++) if (string.Equals(NameAt(i), name, StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
+    }
+
+    public static bool LastEnsureCreated;
+
+    // Returns the index of the desktop with this name, creating (and naming)
+    // it when absent. "Desktop N" (the shell's generic naming) is positional:
+    // enough unnamed desktops are created for index N to exist.
+    public static int EnsureDesktop(string name) {
+        LastEnsureCreated = false;
+        name = name.Trim();
+        int idx = FindByName(name);
+        if (idx >= 0) return idx;
+        var m = System.Text.RegularExpressions.Regex.Match(name, "^[Dd]esktop +([0-9]{1,2})$");
+        if (m.Success) {
+            int want = int.Parse(m.Groups[1].Value);
+            if (want >= 1 && want <= 20) {
+                while (Count < want) { Create(); LastEnsureCreated = true; }
+                return want - 1;
+            }
+        }
+        IVirtualDesktop d = Create();
+        if (_modern) _new.SetDesktopName(d, name); else _old.SetDesktopName(d, name);
+        LastEnsureCreated = true;
+        return Count - 1;  // new desktops append at the end
+    }
+
+    static IVirtualDesktop Create() { return _modern ? _new.CreateDesktop() : _old.CreateDesktop(); }
+
+    // Test/cleanup helper; the launcher itself never removes desktops.
+    public static void RemoveAt(int index) {
+        IVirtualDesktop d = At(index);
+        IVirtualDesktop fallback = At(index == 0 ? 1 : 0);
+        if (_modern) _new.RemoveDesktop(d, fallback); else _old.RemoveDesktop(d, fallback);
+    }
+
+    public static bool SwitchTo(int index) {
+        if (CurrentIndex() == index) return false;
+        IVirtualDesktop d = At(index);
+        if (_modern) _new.SwitchDesktop(d); else _old.SwitchDesktop(d);
+        return true;
+    }
+
+    // Moves the window's view to the desktop unless it is already there (or
+    // pinned to all desktops). Works for other processes' windows, which the
+    // documented MoveWindowToDesktop does not.
+    public static bool EnsureWindowOn(IntPtr hwnd, int index) {
+        IVirtualDesktop target = At(index);
+        Guid targetId = target.GetId();
+        Guid windowId = Guid.Empty;
+        try { windowId = _mgr.GetWindowDesktopId(hwnd); } catch { }
+        if (windowId == targetId || windowId == AppOnAllDesktops || windowId == WindowOnAllDesktops) return false;
+        IApplicationView view;
+        _views.GetViewForHwnd(hwnd, out view);
+        if (view == null) return false;
+        if (_modern) _new.MoveViewToDesktop(view, target); else _old.MoveViewToDesktop(view, target);
+        return true;
+    }
+}
+}
+'@
+
+function Initialize-VDesk {
+    try {
+        [SnapVD.VDesk]::Init()
+    } catch {
+        $inner = $_.Exception
+        while ($inner.InnerException) { $inner = $inner.InnerException }
+        throw ('Virtual desktop control is unavailable: ' + $inner.Message + ' Clear the Virtual desktop field to launch on the current desktop.')
+    }
+}
+`;
+
+/**
  * Resolves what to launch and how to recognize its windows, then defines
  * Find-TargetWindow over WindowFinder::ListAll().
  *
@@ -490,7 +769,7 @@ $targetDesc = if ($procName) { $procName } else { $aumid }
 `;
 
 /** Embeds the config as a single-quoted JSON literal ('' escapes quotes). */
-function psConfig(config: LaunchConfig): string {
+function psConfig(config: LaunchConfig | CloseConfig): string {
 	const json = JSON.stringify(config).replace(/'/g, "''");
 	return "$cfg = ConvertFrom-Json '" + json + "'\n";
 }
@@ -506,6 +785,7 @@ ${psConfig(config)}
 ${NATIVE}
 ${APPX}
 ${ZONE_HELPERS}
+${config.virtualDesktop ? VDESK : ""}
 ${FIND_WINDOW}
 
 # Windows 10/11 windows carry invisible resize borders: GetWindowRect extends
@@ -539,6 +819,16 @@ function Get-ZoneTarget($h, $rect) {
 try {
     $target = $null
     $needLaunch = $true
+    $movedDesktop = $false
+
+    # Resolve (or create) the virtual desktop and switch to it up front, so a
+    # freshly launched window opens directly on the target desktop.
+    $vdIndex = -1
+    if ($cfg.virtualDesktop) {
+        Initialize-VDesk
+        $vdIndex = [SnapVD.VDesk]::EnsureDesktop([string]$cfg.virtualDesktop)
+        if ([SnapVD.VDesk]::SwitchTo($vdIndex)) { Start-Sleep -Milliseconds 350 }
+    }
 
     if ($cfg.focusIfRunning) {
         $target = Find-TargetWindow $cfg.titleFilter @()
@@ -581,6 +871,12 @@ try {
     }
 
     $hwnd = $target.MainWindowHandle
+
+    # An already-running window may live on another desktop - bring it over.
+    if ($vdIndex -ge 0) {
+        $movedDesktop = [SnapVD.VDesk]::EnsureWindowOn($hwnd, $vdIndex)
+        if ($movedDesktop) { Start-Sleep -Milliseconds 120 }
+    }
 
     $rect = $null
     if ($cfg.positionMode -eq 'custom') {
@@ -628,7 +924,7 @@ try {
 
     [void][Native]::SetForegroundWindow($hwnd)
 
-    $out = @{ ok = $true; launched = $needLaunch; positioned = $applied; pid = $target.Id; title = $target.MainWindowTitle }
+    $out = @{ ok = $true; launched = $needLaunch; positioned = $applied; movedDesktop = $movedDesktop; pid = $target.Id; title = $target.MainWindowTitle }
     Write-Output (ConvertTo-Json -InputObject $out -Compress)
 } catch {
     $out = @{ ok = $false; error = $_.Exception.Message }
@@ -724,6 +1020,76 @@ try {
     Write-Output (ConvertTo-Json -InputObject $items.ToArray() -Compress)
 } catch {
     Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
+}
+`;
+}
+
+/**
+ * Closes the configured app's windows. Graceful mode posts WM_CLOSE to every
+ * matching window — identical to clicking the window's X, so apps can prompt
+ * to save. closeThenKill waits out a grace period and force-quits whatever is
+ * left; kill skips straight to Stop-Process. Matching (including the
+ * title-filter and process-name overrides, and Store-app package matching)
+ * is the same FIND_WINDOW logic the launcher uses. Finding nothing to close
+ * is success, not an error — the action is idempotent.
+ */
+export function buildCloseScript(config: CloseConfig): string {
+	return `
+${PROLOG}
+${psConfig(config)}
+${NATIVE}
+${APPX}
+${FIND_WINDOW}
+
+function Get-MatchingWindows {
+    $wins = Get-CandidateWindows
+    if ($cfg.titleFilter) {
+        $pattern = '*' + [System.Management.Automation.WildcardPattern]::Escape($cfg.titleFilter) + '*'
+        $wins = @($wins | Where-Object { $_.Title -like $pattern })
+    }
+    return @($wins)
+}
+
+try {
+    $wins = Get-MatchingWindows
+    $found = $wins.Count
+    $closed = 0
+    $killed = 0
+
+    if ($found -gt 0) {
+        if ($cfg.closeMode -eq 'kill') {
+            foreach ($p in @($wins | ForEach-Object { $_.ProcessId } | Select-Object -Unique)) {
+                try { Stop-Process -Id $p -Force -ErrorAction Stop; $killed++ } catch { }
+            }
+        } else {
+            # WM_CLOSE (0x0010) to each matching top-level window. For Store
+            # apps this is the ApplicationFrameHost frame, which closes the
+            # hosted app exactly like its X button.
+            foreach ($w in $wins) {
+                if ([Native]::PostMessage($w.Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) { $closed++ }
+            }
+
+            if ($cfg.closeMode -eq 'closeThenKill') {
+                $deadline = (Get-Date).AddSeconds([Math]::Max(1, [int]$cfg.waitSeconds))
+                while ((Get-Date) -lt $deadline) {
+                    if ((Get-MatchingWindows).Count -eq 0) { break }
+                    Start-Sleep -Milliseconds 250
+                }
+                # Kill by the pids that own whatever windows survived - never
+                # the pids from before the close, which may have exited and
+                # been reused.
+                foreach ($p in @(Get-MatchingWindows | ForEach-Object { $_.ProcessId } | Select-Object -Unique)) {
+                    try { Stop-Process -Id $p -Force -ErrorAction Stop; $killed++ } catch { }
+                }
+            }
+        }
+    }
+
+    $out = @{ ok = $true; found = $found; closed = $closed; killed = $killed }
+    Write-Output (ConvertTo-Json -InputObject $out -Compress)
+} catch {
+    $out = @{ ok = $false; error = $_.Exception.Message }
+    Write-Output (ConvertTo-Json -InputObject $out -Compress)
 }
 `;
 }

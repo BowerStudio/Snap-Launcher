@@ -30,8 +30,8 @@
 
 		<sdpi-item label="Choose from">
 			<sdpi-select setting="appSource">
-				<option value="running">Running apps</option>
 				<option value="installed">Installed apps</option>
+				<option value="running">Running apps</option>
 				<option value="browse">Browse for a file</option>
 			</sdpi-select>
 		</sdpi-item>
@@ -82,13 +82,25 @@
 		</sdpi-item>
 		<div class="hint">How long to wait for the app's window after launching — raise for slow starters.</div>
 
+		<!-- ========================== Virtual desktop ========================== -->
+		<div class="heading">Virtual desktop</div>
+
+		<sdpi-item label="Desktop name">
+			<sdpi-textfield setting="virtualDesktop" placeholder="Leave empty to stay on the current desktop"></sdpi-textfield>
+		</sdpi-item>
+		<div class="hint">
+			Runs the app on that virtual desktop and switches to it — the desktop is created (and named) if it doesn't exist,
+			and the app's window is moved there if it's open somewhere else. Names match existing desktops ignoring case;
+			"Desktop 2" means the second desktop. Windows 11 only.
+		</div>
+
 		<!-- ============================= Position ============================== -->
 		<div class="heading">Window position</div>
 
 		<sdpi-item label="Positioning">
 			<sdpi-select setting="positionMode">
-				<option value="custom">Custom position (capture / manual)</option>
 				<option value="zone">Monitor &amp; snap zone</option>
+				<option value="custom">Custom position (capture / manual)</option>
 				<option value="none">Don't move the window</option>
 			</sdpi-select>
 		</sdpi-item>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Close App</title>
+		<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+		<style>
+			.heading {
+				margin: 14px 0 2px;
+				padding: 0 0 3px 6px;
+				border-bottom: 1px solid #4a4a4a;
+				color: #9a9a9a;
+				font: 700 11px/1.4 -apple-system, "Segoe UI", sans-serif;
+				text-transform: uppercase;
+				letter-spacing: 0.05em;
+			}
+			.heading:first-child {
+				margin-top: 4px;
+			}
+			.hint {
+				margin: 2px 0 6px 6px;
+				color: #7a7a7a;
+				font: 400 11px/1.5 -apple-system, "Segoe UI", sans-serif;
+			}
+		</style>
+	</head>
+	<body>
+		<!-- ============================ Application ============================ -->
+		<div class="heading">Application</div>
+
+		<sdpi-item label="Choose from">
+			<sdpi-select setting="appSource">
+				<option value="installed">Installed apps</option>
+				<option value="running">Running apps</option>
+				<option value="browse">Browse for a file</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- All three pickers write the same "appPath" setting; the "Choose from"
+		     selector only decides which one is visible. -->
+		<sdpi-item label="Installed apps" class="source-installed">
+			<sdpi-select
+				setting="appPath"
+				datasource="getInstalledApps"
+				show-refresh
+				loading="Scanning installed apps…"
+				placeholder="Pick an installed app"
+			></sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Running apps" class="source-running" hidden>
+			<sdpi-select
+				setting="appPath"
+				datasource="getRunningApps"
+				show-refresh
+				loading="Scanning windows…"
+				placeholder="Pick an app with an open window"
+			></sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="App path" class="source-browse" hidden>
+			<sdpi-file setting="appPath" accept=".exe,.lnk,.bat,.cmd"></sdpi-file>
+		</sdpi-item>
+
+		<sdpi-item label="Selected app">
+			<sdpi-textfield setting="appPath" disabled placeholder="Nothing selected yet"></sdpi-textfield>
+		</sdpi-item>
+
+		<!-- ============================ Close behavior ========================== -->
+		<div class="heading">Close behavior</div>
+
+		<sdpi-item label="How to close">
+			<sdpi-select setting="closeMode">
+				<option value="close">Close gracefully (like clicking ✕)</option>
+				<option value="closeThenKill">Close, force-quit if still open</option>
+				<option value="kill">Force-quit immediately</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div class="hint">
+			Graceful closing lets the app prompt to save unsaved work. Force-quit ends the process without asking — unsaved
+			work is lost.
+		</div>
+
+		<sdpi-item label="Wait (seconds)" class="kill-wait" hidden>
+			<sdpi-textfield setting="waitSeconds" placeholder="5"></sdpi-textfield>
+		</sdpi-item>
+		<div class="hint kill-wait" hidden>How long to give the app to close itself before force-quitting.</div>
+
+		<sdpi-item label="Status">
+			<sdpi-textfield setting="captureStatus" disabled></sdpi-textfield>
+		</sdpi-item>
+
+		<!-- ============================= Advanced ============================== -->
+		<div class="heading">Advanced — window matching</div>
+		<div class="hint">Only needed when the wrong windows get closed (or none at all). Most keys can leave these empty.</div>
+
+		<sdpi-item label="Title contains">
+			<sdpi-textfield setting="titleFilter" placeholder="Optional window-title filter"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Process name">
+			<sdpi-textfield setting="processName" placeholder="Optional override, e.g. WindowsTerminal"></sdpi-textfield>
+		</sdpi-item>
+
+		<script>
+			// sdpi-select doesn't re-emit change events across its shadow DOM, so
+			// keep row visibility in sync with a light poll while the PI is open.
+			function applyVisibility() {
+				const sourceSelect = document.querySelector('sdpi-select[setting="appSource"]');
+				const source = (sourceSelect && sourceSelect.value) || "installed";
+				document.querySelectorAll(".source-installed").forEach((el) => (el.hidden = source !== "installed"));
+				document.querySelectorAll(".source-running").forEach((el) => (el.hidden = source !== "running"));
+				document.querySelectorAll(".source-browse").forEach((el) => (el.hidden = source !== "browse"));
+
+				const modeSelect = document.querySelector('sdpi-select[setting="closeMode"]');
+				const mode = (modeSelect && modeSelect.value) || "close";
+				document.querySelectorAll(".kill-wait").forEach((el) => (el.hidden = mode !== "closeThenKill"));
+			}
+			window.addEventListener("DOMContentLoaded", () => {
+				applyVisibility();
+				setInterval(applyVisibility, 300);
+			});
+		</script>
+	</body>
+</html>
