@@ -10,11 +10,13 @@ import type { JsonValue } from "@elgato/utils";
 
 import {
 	buildCaptureScript,
+	buildInstalledListScript,
 	buildLaunchScript,
 	buildListScript,
 	buildMonitorListScript,
 	runPowerShell,
 	type CaptureResult,
+	type InstalledApp,
 	type LaunchResult,
 	type MonitorEntry,
 	type RunningApp,
@@ -31,7 +33,7 @@ type SettingsHolder = {
 
 @action({ UUID: "com.bowerstudio.snap-launcher.launch" })
 export class LaunchApp extends SingletonAction<LaunchSettings> {
-	/** Friendly names of the apps offered in the last Running-apps scan, by value. */
+	/** Friendly names of the apps offered in the last Running/Installed-apps scan, by value. */
 	private appNames = new Map<string, string>();
 
 	/**
@@ -54,6 +56,10 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		if (seeded.positionMode === undefined) {
 			// Migrate legacy keys from applyPosition; new keys default to custom.
 			seeded.positionMode = (seeded.applyPosition ?? true) ? "custom" : "none";
+			changed = true;
+		}
+		if (seeded.appSource === undefined) {
+			seeded.appSource = "running";
 			changed = true;
 		}
 		if (changed) {
@@ -129,6 +135,8 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 
 		if (event === "getRunningApps") {
 			await this.sendRunningApps();
+		} else if (event === "getInstalledApps") {
+			await this.sendInstalledApps();
 		} else if (event === "getMonitors") {
 			await this.sendMonitors();
 		} else if (event === "captureWindow") {
@@ -168,6 +176,27 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		}
 
 		await streamDeck.ui.sendToPropertyInspector({ event: "getRunningApps", items });
+	}
+
+	/** Populates the "Installed apps" dropdown (sdpi-select datasource). */
+	private async sendInstalledApps(): Promise<void> {
+		let items: { label: string; value: string }[] = [];
+
+		try {
+			const apps = await runPowerShell<InstalledApp[]>(buildInstalledListScript(), 30_000);
+			if (Array.isArray(apps)) {
+				items = apps
+					.filter((a) => typeof a.path === "string" && a.path.length > 0 && typeof a.name === "string" && a.name.length > 0)
+					.map((a) => {
+						this.appNames.set(a.path, a.name);
+						return { label: truncate(a.name, 50), value: a.path };
+					});
+			}
+		} catch (e) {
+			logger.error(`Failed to list installed apps: ${e instanceof Error ? e.message : String(e)}`);
+		}
+
+		await streamDeck.ui.sendToPropertyInspector({ event: "getInstalledApps", items });
 	}
 
 	/** Populates the "Monitor" dropdown (sdpi-select datasource). */

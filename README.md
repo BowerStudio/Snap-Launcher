@@ -2,28 +2,43 @@
 
 One key press launches (or focuses) an application and snaps its window into place — on any monitor in a multi-monitor layout, including monitors left of or above the primary (negative coordinates).
 
-Two ways to position a window:
-
-- **Monitor & snap zone** — pick a monitor and a zone (full screen, left/right half, top/bottom half, or a quarter), exactly like the Windows Snap layouts. The position is worked out fresh on every key press, so it keeps working when you change resolution, scaling, or monitor arrangement.
-- **Custom position** — arrange the window by hand once, click **Capture**, and the key restores that exact geometry from then on. No coordinates to type.
-
 Works with classic desktop apps (`.exe`/`.lnk`) **and Microsoft Store apps** (WhatsApp, Spotify, Settings, …).
 
 Windows only: the plugin drives Windows PowerShell 5.1 and the Win32 window APIs (`SetWindowPos`, `GetWindowRect`, `EnumDisplayMonitors`).
 
-## Setting up a key
+## Quick start
 
 1. Drag **Snap Launcher → Launch & Position** onto a key.
-2. Choose the app:
-   - **Running apps** dropdown — start the app, click the refresh icon, and pick it. This works for everything, including Store apps (they're saved as a `shell:AppsFolder\<AppUserModelId>` entry the plugin knows how to launch).
-   - **App path** — browse to an `.exe`, `.lnk`, `.bat`, or `.cmd` directly.
+2. In the **Application** section, pick the app (see [Choosing the application](#choosing-the-application) below).
+3. In the **Window position** section, pick a positioning mode — or leave it and click **Capture** with the app's window arranged how you like it.
+4. Press the key. If the app is already running its window is focused and moved into place; otherwise it's launched, the plugin waits for its window, then positions it.
 
-   Picking an app also sets the key's title to the app's name (e.g. "WhatsApp"). Anything you type in the **Title** field yourself always takes precedence.
-3. Choose a **Positioning** mode:
-   - **Monitor & snap zone** — pick a **Monitor** ("Primary monitor" follows whichever display is primary; the numbered entries pin a specific display) and a **Zone**. Done — no capturing needed.
-   - **Custom position (capture / manual)** — arrange the app's window exactly where you want it, then click **Capture current window position & size**. The X/Y/Width/Height fields fill in and the Status line confirms what was saved.
-   - **Don't move the window** — the key becomes a plain launcher/focuser.
-4. Press the key: if the app is running, its window is focused and moved into place; otherwise it's launched, the plugin waits for its window, then positions it.
+The settings panel is organised into four sections:
+
+| Section | What's in it |
+| --- | --- |
+| **Application** | Which app to launch, and any command-line arguments. |
+| **Launch** | Whether to reuse an already-running window, and how long to wait for a window after launching. |
+| **Window position** | Where the window goes: a snap zone on a chosen monitor, an exact captured rectangle, or nowhere. |
+| **Advanced — window matching** | Only needed when the plugin grabs the wrong window. Most keys leave these empty. |
+
+## Choosing the application
+
+The **Choose from** selector switches between three ways of picking an app. All three set the same thing (the **Selected app** line always shows what's currently chosen — whichever picker you used last wins):
+
+- **Running apps** — every app that currently has a visible window. Start the app, click the refresh icon, pick it from the list. Works for everything, including Store apps.
+- **Installed apps** — everything installed on the machine (Start Menu programs plus Microsoft Store apps), no need to start the app first. Click the refresh icon after installing something new.
+- **Browse for a file** — point straight at an `.exe`, `.lnk`, `.bat`, or `.cmd`.
+
+Picking an app also sets the key's title to the app's name (e.g. "WhatsApp"). Anything you type in Stream Deck's own **Title** field always takes precedence.
+
+## Positioning the window
+
+Three modes, chosen with the **Positioning** dropdown:
+
+- **Monitor & snap zone** — pick a **Monitor** ("Primary monitor" follows whichever display is primary; the numbered entries pin a specific display) and a **Zone** (full screen, halves, quarters — exactly like the Windows Snap layouts). The position is worked out fresh on every key press, so it keeps working when you change resolution, scaling, or monitor arrangement. No capturing needed.
+- **Custom position (capture / manual)** — arrange the app's window exactly where you want it, then click **Capture current window position & size**. The X/Y/Width/Height fields fill in and the Status line confirms what was saved. The key restores that exact geometry from then on. (You can also type coordinates by hand.)
+- **Don't move the window** — the key becomes a plain launcher/focuser.
 
 ### The snap zones
 
@@ -41,17 +56,18 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 
 ### All settings
 
-| Setting | What it does |
-| --- | --- |
-| Running apps / App path | The app to launch — both write the same setting; whichever you set last wins. |
-| Arguments | Optional command-line arguments passed on launch. |
-| Title contains | Only match windows whose title contains this text — disambiguates multi-window apps. |
-| Process name | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed. |
-| If already running | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance. |
-| Positioning | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode. |
-| Monitor / Zone | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display. |
-| X/Y/Width/Height + Capture | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand. |
-| Wait (seconds) | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. |
+| Setting | Section | What it does |
+| --- | --- | --- |
+| Choose from | Application | Which picker is shown: **Running apps**, **Installed apps**, or **Browse for a file**. All three set the same app. |
+| Running / Installed apps / App path | Application | The app to launch. The **Selected app** line below always shows the current choice. |
+| Arguments | Application | Optional command-line arguments passed on launch. |
+| If already running | Launch | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance. |
+| Wait (seconds) | Launch | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. |
+| Positioning | Window position | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode. |
+| Monitor / Zone | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display. |
+| X/Y/Width/Height + Capture | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand. |
+| Title contains | Advanced | Only match windows whose title contains this text — disambiguates multi-window apps. |
+| Process name | Advanced | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed. |
 
 Keys configured with an older version of the plugin keep working unchanged — they show up as **Custom position** with their captured rectangle intact.
 
@@ -60,6 +76,7 @@ Keys configured with an older version of the plugin keep working unchanged — t
 - **Snap zones**: the monitor and its work area are resolved at key-press time via `EnumDisplayMonitors`, so nothing goes stale when the display layout changes. Modern Windows windows carry invisible resize borders (`GetWindowRect` extends ~7 DPI-scaled pixels past the visible frame on the left, right, and bottom); the plugin measures each window's actual borders via DWM extended frame bounds and compensates, so the *visible* window edges land flush with the zone — pixel-identical to native Windows Snap.
 - **Custom positions**: every PowerShell invocation opts into per-monitor-v2 DPI awareness, so capture and restore both use physical pixels in virtual-desktop coordinates — captured rectangles round-trip exactly across mixed-DPI monitor setups. If Windows rescales the window while it crosses onto a monitor with a different scale factor, the script verifies the final rectangle and reapplies once. Captured numbers include the invisible borders, so they read a few pixels larger than the visible frame — that's expected, and restoring them reproduces the visible layout exactly.
 - **Store / UWP apps**: launched by AppUserModelId through the shell (their exes under `WindowsApps` are ACL-protected). Windows are matched by app package, so launcher stubs like `WhatsApp.Root.exe` spawning `WhatsApp.exe` still resolve, and the plugin repositions the `ApplicationFrameHost` frame that actually hosts UWP windows. Bare `WindowsApps` exe paths from old configs are converted to the package identity automatically.
+- **Installed apps list**: classic apps come from Start Menu shortcuts (all-users and per-user) whose target is an `.exe` — picking one saves the `.lnk` path, which the launcher resolves like any shortcut. Store apps come from the shell's `AppsFolder` and are saved as `shell:AppsFolder\<AppUserModelId>`, the same form the Running-apps list produces.
 
 ## Project layout
 
@@ -135,6 +152,7 @@ Before publishing:
 ## Troubleshooting
 
 - **Nothing moves / access denied**: elevated (run-as-administrator) windows can't be repositioned by a non-elevated process (UIPI), and they don't appear in the Running apps list. Launch such apps unelevated, or run the Stream Deck software elevated (not generally recommended).
+- **App missing from the Installed apps list**: the list is built from Start Menu shortcuts and Microsoft Store packages, so portable apps that never created a shortcut won't appear — use **Browse for a file** (or **Running apps** while the app is open) instead. Click the refresh icon after installing something new.
 - **Monitor missing from the dropdown**: click the refresh icon next to the Monitor list — it's populated when the settings panel opens, so displays plugged in afterwards need a refresh.
 - **Window snaps to the wrong display**: "Primary monitor" follows Windows' current primary. If you want a key pinned to a physical display, pick its numbered entry instead.
 - **Store app window isn't found**: set **Process name** to the app's windowed process. The old `explorer.exe` + `shell:AppsFolder\…`-in-Arguments workaround from earlier versions also still works.

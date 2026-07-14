@@ -6,6 +6,8 @@ import type { LaunchConfig, PositionMode } from "./powershell";
  */
 export type LaunchSettings = {
 	appPath?: string;
+	/** Which app picker the PI shows (installed | running | browse). Cosmetic only. */
+	appSource?: string;
 	launchArgs?: string;
 	titleFilter?: string;
 	processName?: string;
