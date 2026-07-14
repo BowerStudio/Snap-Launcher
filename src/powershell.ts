@@ -41,6 +41,8 @@ export type CaptureResult =
 
 export type RunningApp = { name: string; title: string; path: string | null; display?: string };
 
+export type InstalledApp = { name: string; path: string };
+
 export type MonitorEntry = {
 	deviceName: string;
 	left: number;
@@ -720,6 +722,71 @@ try {
         $items.Add([pscustomobject]@{ name = $w.ProcessName; title = $w.Title; path = $p; display = $disp })
     }
     Write-Output (ConvertTo-Json -InputObject $items.ToArray() -Compress)
+} catch {
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
+}
+`;
+}
+
+/**
+ * Lists installed applications for the "Installed apps" dropdown. Two sources:
+ *
+ * - Start Menu shortcuts (all-users and per-user) whose target is an .exe —
+ *   the value is the .lnk path itself, which the launch script already knows
+ *   how to resolve and launch.
+ * - Store (MSIX/UWP) apps from the shell's AppsFolder, kept only when their
+ *   parsing name is a real AppUserModelId (FamilyName!AppId) — the value is
+ *   the same shell:AppsFolder\<AUMID> form the Running-apps list produces.
+ *
+ * Classic apps are deduplicated by resolved target exe so an app with both an
+ * all-users and a per-user shortcut appears once.
+ */
+export function buildInstalledListScript(): string {
+	return `
+${PROLOG}
+try {
+    $items = New-Object System.Collections.Generic.List[object]
+    $seen = @{}
+
+    $sh = New-Object -ComObject WScript.Shell
+    $roots = @(
+        (Join-Path $env:ProgramData 'Microsoft\\Windows\\Start Menu\\Programs'),
+        (Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs')
+    )
+    foreach ($root in $roots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($lnk in @(Get-ChildItem -LiteralPath $root -Recurse -Filter *.lnk -ErrorAction SilentlyContinue)) {
+            $target = $null
+            try { $target = $sh.CreateShortcut($lnk.FullName).TargetPath } catch { }
+            if (-not $target -or -not $target.ToLower().EndsWith('.exe')) { continue }
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($lnk.Name)
+            # Start Menu folders are full of "Uninstall Foo" shortcuts; a
+            # launcher has no business offering those.
+            if ($name -match '^uninstall\\b') { continue }
+            $key = $target.ToLower()
+            if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            $items.Add([pscustomobject]@{ name = $name; path = $lnk.FullName })
+        }
+    }
+
+    $appsFolder = (New-Object -ComObject Shell.Application).NameSpace('shell:AppsFolder')
+    if ($appsFolder) {
+        foreach ($item in @($appsFolder.Items())) {
+            $aumid = [string]$item.Path
+            # Entries without '!' are classic apps (already covered by their
+            # Start Menu shortcut) or shell verbs - skip them.
+            if (-not $aumid -or -not $aumid.Contains('!')) { continue }
+            $path = 'shell:AppsFolder\\' + $aumid
+            $key = $path.ToLower()
+            if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            $items.Add([pscustomobject]@{ name = [string]$item.Name; path = $path })
+        }
+    }
+
+    $sorted = @($items | Sort-Object -Property name)
+    Write-Output (ConvertTo-Json -InputObject $sorted -Compress)
 } catch {
     Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
 }

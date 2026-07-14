@@ -1,14 +1,14 @@
 {
 	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
 	"Name": "Snap Launcher",
-	"Version": "1.1.0.0",
+	"Version": "1.2.0.0",
 	"Author": "Bower Studio",
 	"Description": "Launch apps and snap their windows to saved positions across your monitors.",
 	"Category": "Snap Launcher",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"Icon": "imgs/plugin/marketplace",
 	"CodePath": "bin/plugin.js",
-	"SDKVersion": 2,
+	"SDKVersion": 3,
 	"UUID": "com.bowerstudio.snap-launcher",
 	"Software": {
 		"MinimumVersion": "7.1"

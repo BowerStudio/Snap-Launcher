@@ -4,39 +4,86 @@
 		<meta charset="utf-8" />
 		<title>Launch &amp; Position</title>
 		<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+		<style>
+			.heading {
+				margin: 14px 0 2px;
+				padding: 0 0 3px 6px;
+				border-bottom: 1px solid #4a4a4a;
+				color: #9a9a9a;
+				font: 700 11px/1.4 -apple-system, "Segoe UI", sans-serif;
+				text-transform: uppercase;
+				letter-spacing: 0.05em;
+			}
+			.heading:first-child {
+				margin-top: 4px;
+			}
+			.hint {
+				margin: 2px 0 6px 6px;
+				color: #7a7a7a;
+				font: 400 11px/1.5 -apple-system, "Segoe UI", sans-serif;
+			}
+		</style>
 	</head>
 	<body>
-		<!-- Both the dropdown and the file picker write to the same "appPath"
-		     setting: pick a running app OR browse to an .exe/.lnk. -->
-		<sdpi-item label="Running apps">
+		<!-- ============================ Application ============================ -->
+		<div class="heading">Application</div>
+
+		<sdpi-item label="Choose from">
+			<sdpi-select setting="appSource">
+				<option value="running">Running apps</option>
+				<option value="installed">Installed apps</option>
+				<option value="browse">Browse for a file</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- All three pickers write the same "appPath" setting; the "Choose from"
+		     selector only decides which one is visible. -->
+		<sdpi-item label="Running apps" class="source-running">
 			<sdpi-select
 				setting="appPath"
 				datasource="getRunningApps"
 				show-refresh
 				loading="Scanning windows…"
-				placeholder="Pick a running app (or browse below)"
+				placeholder="Pick an app with an open window"
 			></sdpi-select>
 		</sdpi-item>
 
-		<sdpi-item label="App path">
+		<sdpi-item label="Installed apps" class="source-installed" hidden>
+			<sdpi-select
+				setting="appPath"
+				datasource="getInstalledApps"
+				show-refresh
+				loading="Scanning installed apps…"
+				placeholder="Pick an installed app"
+			></sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="App path" class="source-browse" hidden>
 			<sdpi-file setting="appPath" accept=".exe,.lnk,.bat,.cmd"></sdpi-file>
+		</sdpi-item>
+
+		<sdpi-item label="Selected app">
+			<sdpi-textfield setting="appPath" disabled placeholder="Nothing selected yet"></sdpi-textfield>
 		</sdpi-item>
 
 		<sdpi-item label="Arguments">
 			<sdpi-textfield setting="launchArgs" placeholder="Optional command-line arguments"></sdpi-textfield>
 		</sdpi-item>
 
-		<sdpi-item label="Title contains">
-			<sdpi-textfield setting="titleFilter" placeholder="Optional window-title filter"></sdpi-textfield>
-		</sdpi-item>
-
-		<sdpi-item label="Process name">
-			<sdpi-textfield setting="processName" placeholder="Optional override, e.g. WindowsTerminal"></sdpi-textfield>
-		</sdpi-item>
+		<!-- ============================== Launch =============================== -->
+		<div class="heading">Launch</div>
 
 		<sdpi-item label="If already running">
 			<sdpi-checkbox setting="focusIfRunning" label="Reuse the existing window instead of launching again"></sdpi-checkbox>
 		</sdpi-item>
+
+		<sdpi-item label="Wait (seconds)">
+			<sdpi-textfield setting="waitSeconds" placeholder="10"></sdpi-textfield>
+		</sdpi-item>
+		<div class="hint">How long to wait for the app's window after launching — raise for slow starters.</div>
+
+		<!-- ============================= Position ============================== -->
+		<div class="heading">Window position</div>
 
 		<sdpi-item label="Positioning">
 			<sdpi-select setting="positionMode">
@@ -70,6 +117,13 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item class="custom-only">
+			<sdpi-button onclick="SDPIComponents.streamDeckClient.send('sendToPlugin', { event: 'captureWindow' });">
+				Capture current window position &amp; size
+			</sdpi-button>
+		</sdpi-item>
+		<div class="hint custom-only">Arrange the app's window where you want it, then click Capture — or type the numbers below.</div>
+
 		<sdpi-item label="X" class="custom-only">
 			<sdpi-textfield setting="x" placeholder="e.g. 2560 (negative = monitor left of primary)"></sdpi-textfield>
 		</sdpi-item>
@@ -86,32 +140,40 @@
 			<sdpi-textfield setting="height" placeholder="e.g. 800"></sdpi-textfield>
 		</sdpi-item>
 
-		<sdpi-item class="custom-only">
-			<sdpi-button onclick="SDPIComponents.streamDeckClient.send('sendToPlugin', { event: 'captureWindow' });">
-				Capture current window position &amp; size
-			</sdpi-button>
-		</sdpi-item>
-
 		<sdpi-item label="Status" class="custom-only">
 			<sdpi-textfield setting="captureStatus" disabled></sdpi-textfield>
 		</sdpi-item>
 
-		<sdpi-item label="Wait (seconds)">
-			<sdpi-textfield setting="waitSeconds" placeholder="10"></sdpi-textfield>
+		<!-- ============================= Advanced ============================== -->
+		<div class="heading">Advanced — window matching</div>
+		<div class="hint">Only needed when the plugin grabs the wrong window (or none at all). Most keys can leave these empty.</div>
+
+		<sdpi-item label="Title contains">
+			<sdpi-textfield setting="titleFilter" placeholder="Optional window-title filter"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Process name">
+			<sdpi-textfield setting="processName" placeholder="Optional override, e.g. WindowsTerminal"></sdpi-textfield>
 		</sdpi-item>
 
 		<script>
 			// sdpi-select doesn't re-emit change events across its shadow DOM, so
 			// keep row visibility in sync with a light poll while the PI is open.
-			function applyModeVisibility() {
-				const select = document.querySelector('sdpi-select[setting="positionMode"]');
-				const mode = (select && select.value) || "custom";
+			function applyVisibility() {
+				const modeSelect = document.querySelector('sdpi-select[setting="positionMode"]');
+				const mode = (modeSelect && modeSelect.value) || "custom";
 				document.querySelectorAll(".zone-only").forEach((el) => (el.hidden = mode !== "zone"));
 				document.querySelectorAll(".custom-only").forEach((el) => (el.hidden = mode !== "custom"));
+
+				const sourceSelect = document.querySelector('sdpi-select[setting="appSource"]');
+				const source = (sourceSelect && sourceSelect.value) || "running";
+				document.querySelectorAll(".source-running").forEach((el) => (el.hidden = source !== "running"));
+				document.querySelectorAll(".source-installed").forEach((el) => (el.hidden = source !== "installed"));
+				document.querySelectorAll(".source-browse").forEach((el) => (el.hidden = source !== "browse"));
 			}
 			window.addEventListener("DOMContentLoaded", () => {
-				applyModeVisibility();
-				setInterval(applyModeVisibility, 300);
+				applyVisibility();
+				setInterval(applyVisibility, 300);
 			});
 		</script>
 	</body>
