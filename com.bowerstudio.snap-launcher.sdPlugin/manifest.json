@@ -39,6 +39,22 @@
 					"TitleAlignment": "bottom"
 				}
 			]
+		},
+		{
+			"Name": "Close App",
+			"UUID": "com.bowerstudio.snap-launcher.close",
+			"Icon": "imgs/actions/close/icon",
+			"Tooltip": "Close an app's windows — optionally force-quit if it doesn't exit.",
+			"PropertyInspectorPath": "ui/close.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/close/key",
+					"TitleAlignment": "bottom"
+				}
+			]
 		}
 	]
 }

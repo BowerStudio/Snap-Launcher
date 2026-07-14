@@ -1,4 +1,4 @@
-import type { LaunchConfig, PositionMode } from "./powershell";
+import type { CloseConfig, CloseMode, LaunchConfig, PositionMode } from "./powershell";
 
 /**
  * Per-key settings. Numeric fields may arrive as strings (they are bound to
@@ -15,6 +15,8 @@ export type LaunchSettings = {
 	/** Legacy pre-zone setting; superseded by positionMode but read for migration. */
 	applyPosition?: boolean;
 	positionMode?: string;
+	/** Virtual desktop name to run the app on; empty/absent = current desktop. */
+	virtualDesktop?: string;
 	monitorId?: string;
 	zone?: string;
 	waitSeconds?: number | string;
@@ -22,6 +24,27 @@ export type LaunchSettings = {
 	y?: number | string;
 	width?: number | string;
 	height?: number | string;
+	captureStatus?: string;
+	/** App the key was last auto-titled for, and the title that was applied. */
+	titledFor?: string;
+	autoTitle?: string;
+};
+
+/**
+ * Per-key settings for the Close App action. App identification fields mirror
+ * LaunchSettings so the Property Inspector pickers are interchangeable.
+ */
+export type CloseSettings = {
+	appPath?: string;
+	/** Which app picker the PI shows (installed | running | browse). Cosmetic only. */
+	appSource?: string;
+	titleFilter?: string;
+	processName?: string;
+	/** close (default) | closeThenKill | kill */
+	closeMode?: string;
+	/** closeThenKill only: grace period before force-quitting. */
+	waitSeconds?: number | string;
+	/** Status line shown in the PI. */
 	captureStatus?: string;
 	/** App the key was last auto-titled for, and the title that was applied. */
 	titledFor?: string;
@@ -48,6 +71,18 @@ function num(v: number | string | undefined, fallback: number): number {
  * mode without a valid captured rectangle degrades to none so a first press
  * still launches the app.
  */
+/** Normalizes Close App settings into the config the close script expects. */
+export function toCloseConfig(s: CloseSettings): CloseConfig {
+	const mode: CloseMode = s.closeMode === "closeThenKill" || s.closeMode === "kill" ? s.closeMode : "close";
+	return {
+		appPath: (s.appPath ?? "").trim(),
+		titleFilter: (s.titleFilter ?? "").trim(),
+		processName: (s.processName ?? "").trim(),
+		closeMode: mode,
+		waitSeconds: Math.min(60, Math.max(1, Math.round(num(s.waitSeconds, 5)))),
+	};
+}
+
 export function toConfig(s: LaunchSettings): LaunchConfig {
 	const x = num(s.x, Number.NaN);
 	const y = num(s.y, Number.NaN);
@@ -74,6 +109,7 @@ export function toConfig(s: LaunchSettings): LaunchConfig {
 		processName: (s.processName ?? "").trim(),
 		focusIfRunning: s.focusIfRunning ?? true,
 		positionMode: mode,
+		virtualDesktop: (s.virtualDesktop ?? "").trim(),
 		monitorId: (s.monitorId ?? "").trim() || "primary",
 		zone,
 		waitSeconds: Math.min(120, Math.max(1, Math.round(num(s.waitSeconds, 10)))),
