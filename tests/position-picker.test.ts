@@ -63,3 +63,10 @@ test("layoutMonitors preserves a portrait monitor's aspect", () => {
 	const r = layoutMonitors([M({ width: 1080, height: 1920 })], 200, 200);
 	assert.ok(r.monitors[0].h > r.monitors[0].w, "portrait stays taller than wide");
 });
+
+test("module imports in Node without touching the DOM, and exposes init", async () => {
+	const picker = await import("../com.bowerstudio.snap-launcher.sdPlugin/ui/position-picker.js");
+	assert.equal(typeof picker.init, "function");
+	assert.equal(typeof picker.zoneFromPoint, "function");
+	assert.equal(typeof picker.layoutMonitors, "function");
+});
