@@ -30,9 +30,10 @@ matches how users think about window snapping.
 
 - Launch action Property Inspector (`com.bowerstudio.snap-launcher.sdPlugin/ui/launch.html`).
 - A new Property Inspector module: `com.bowerstudio.snap-launcher.sdPlugin/ui/position-picker.js`.
-- Enriching the `getMonitors` message payload sent by
+- A new plugin-side module `src/monitors.ts` holding the pure `toMonitorItems`
+  mapping, and enriching the `getMonitors` message payload sent by
   `src/actions/launch-app.ts` so the PI receives per-monitor geometry.
-- Unit tests for the picker's pure helper functions.
+- Unit tests (Node's built-in `node:test` runner) for the pure helper functions.
 
 ### Explicitly out of scope
 
@@ -142,18 +143,23 @@ portrait; a monitor left of primary renders to the left).
   current settings and restores the selected monitor and highlighted zone.
 - **Write on click:** merge the new `zone` or `monitorId` into the current
   settings and `setSettings`, so unrelated fields are preserved.
-- **Monitor geometry:** `LaunchApp.sendMonitors()` is changed to include
-  geometry in each item while keeping `label` and `value` for the existing
-  `sdpi-select` datasource contract. Proposed item shape:
+- **Monitor geometry:** the mapping of `MonitorEntry[]` to PI items is extracted
+  into a pure, exported `toMonitorItems(monitors)` in a new `src/monitors.ts`
+  (so it can be unit-tested). `LaunchApp.sendMonitors()` calls it and sends the
+  result, which now includes geometry. `value` and `label` are retained for the
+  PI's Display dropdown. Item shape:
 
   ```ts
   { value: string; label: string; left: number; top: number;
     width: number; height: number; isPrimary: boolean }
   ```
 
-  The `"primary"` sentinel remains a dropdown option but is not itself a tile;
-  when `monitorId === "primary"`, the arrangement highlights whichever monitor
-  has `isPrimary === true`.
+  The `sdpi-select` Monitor dropdown is removed (replaced by the picker's own
+  Display dropdown), so the old `{label,value}`-only datasource shape and the
+  server-injected `"primary"` sentinel item are no longer needed; the picker
+  adds the `Primary monitor` (value `"primary"`) option itself. When
+  `monitorId === "primary"`, the arrangement highlights whichever monitor has
+  `isPrimary === true`.
 
 The picker requests the monitor list via the existing `getMonitors`
 `sendToPlugin` event and listens for the `getMonitors` reply. No new message
@@ -173,8 +179,9 @@ types are required.
   client.
 
 No bundler change is needed: the plugin build (`rollup`) targets `src/plugin.ts`
-only; the PI HTML/JS is served as-is by Stream Deck, and Vitest can import the
-pure ESM helpers directly.
+only; the PI HTML/JS is served as-is by Stream Deck, and Node's built-in test
+runner (`node --test`) imports the pure ESM helpers directly (forward-slash
+specifier, `.js` extension).
 
 ### 6. Fallbacks & edge cases
 
@@ -190,15 +197,18 @@ pure ESM helpers directly.
 
 ## Testing
 
-- Unit tests (Vitest) for `zoneFromPoint` — every region including the four
+- Unit tests (`node:test`) for `zoneFromPoint` — every region including the four
   corners, the four edge midpoints, and the centre, plus band boundaries.
 - Unit tests for `zoneRect` — each zone maps to the expected rectangle.
 - Unit tests for `layoutMonitors` — relative positions and scaling preserved for
   a representative multi-monitor arrangement (including a monitor with negative
   `left`, i.e. left of primary, and a portrait monitor); single-monitor case.
+- Unit tests for `toMonitorItems` — sorting by device number, label formatting
+  (including the `(primary)` suffix), and geometry passthrough.
+- Importing `position-picker.js` in Node must not throw (DOM/`SDPIComponents`
+  wiring is guarded), proving the pure/side-effect split holds.
 - Existing tests (`settings.test.ts`, `monitors.test.ts`, `zone-helpers.test.ts`,
-  etc.) must continue to pass unchanged. If `monitors.test.ts` asserts the
-  `sendMonitors` payload shape, extend it to cover the added geometry fields.
+  etc.) must continue to pass unchanged.
 - Manual check in Stream Deck: pick monitor via arrangement and via dropdown
   (in sync); hover previews the right zone; click persists; reopening the PI
   restores the highlight; Custom and None modes still behave as before.
