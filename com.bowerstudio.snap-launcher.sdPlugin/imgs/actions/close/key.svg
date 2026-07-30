@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="288" height="288" viewBox="0 0 288 288" role="img" aria-label="Close App mark">
+  <defs>
+    <mask id="knockout" maskUnits="userSpaceOnUse" x="0" y="0" width="28" height="28">
+      <rect x="14" y="2" width="12" height="24" fill="#ffffff"></rect>
+      <path d="M16.5 10.5 L23.5 17.5 M23.5 10.5 L16.5 17.5" stroke="#000000" stroke-width="2.6"></path>
+    </mask>
+  </defs>
+  <g transform="translate(56 56) scale(6.2857)">
+    <rect x="1" y="1" width="26" height="26" fill="none" stroke="#f3f2f2" stroke-width="2"></rect>
+    <rect x="0" y="0" width="28" height="28" fill="#0891b2" mask="url(#knockout)"></rect>
+  </g>
+</svg>
