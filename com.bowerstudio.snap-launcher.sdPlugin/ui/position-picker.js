@@ -38,3 +38,37 @@ export function zoneFromPoint(rx, ry) {
 	if (nb) return "bottom";
 	return "full";
 }
+
+// Scales monitor geometry into a small strip, preserving true relative positions
+// and aspect ratios, so the arrangement mirrors the real desktop layout.
+export function layoutMonitors(monitors, maxWidth = 200, maxHeight = 110) {
+	if (!Array.isArray(monitors) || monitors.length === 0) {
+		return { boxWidth: 0, boxHeight: 0, monitors: [] };
+	}
+	let minLeft = Infinity;
+	let minTop = Infinity;
+	let maxRight = -Infinity;
+	let maxBottom = -Infinity;
+	for (const m of monitors) {
+		minLeft = Math.min(minLeft, m.left);
+		minTop = Math.min(minTop, m.top);
+		maxRight = Math.max(maxRight, m.left + m.width);
+		maxBottom = Math.max(maxBottom, m.top + m.height);
+	}
+	const spanW = maxRight - minLeft;
+	const spanH = maxBottom - minTop;
+	const scale = Math.min(maxWidth / spanW, maxHeight / spanH);
+	return {
+		boxWidth: Math.round(spanW * scale),
+		boxHeight: Math.round(spanH * scale),
+		monitors: monitors.map((m) => ({
+			value: m.value,
+			label: m.label,
+			isPrimary: !!m.isPrimary,
+			x: Math.round((m.left - minLeft) * scale),
+			y: Math.round((m.top - minTop) * scale),
+			w: Math.round(m.width * scale),
+			h: Math.round(m.height * scale),
+		})),
+	};
+}
