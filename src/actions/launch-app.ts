@@ -17,6 +17,7 @@ import {
 	type LaunchResult,
 	type MonitorEntry,
 } from "../powershell";
+import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
 import { applyAutoTitle, sendInstalledApps, sendRunningApps } from "./pickers";
 
@@ -120,21 +121,14 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		}
 	}
 
-	/** Populates the "Monitor" dropdown (sdpi-select datasource). */
+	/** Sends the connected monitors (geometry + label) to the Property Inspector. */
 	private async sendMonitors(): Promise<void> {
-		const items: { label: string; value: string }[] = [{ label: "Primary monitor", value: "primary" }];
+		let items: MonitorItem[] = [];
 
 		try {
 			const monitors = await runPowerShell<MonitorEntry[]>(buildMonitorListScript(), 20_000);
 			if (Array.isArray(monitors)) {
-				const sorted = [...monitors].sort((a, b) => a.deviceName.localeCompare(b.deviceName, undefined, { numeric: true }));
-				for (const m of sorted) {
-					const n = /(\d+)$/.exec(m.deviceName)?.[1];
-					items.push({
-						label: `Monitor ${n ?? m.deviceName} — ${m.width}×${m.height}${m.isPrimary ? " (primary)" : ""}`,
-						value: m.deviceName,
-					});
-				}
+				items = toMonitorItems(monitors);
 			}
 		} catch (e) {
 			logger.error(`Failed to list monitors: ${e instanceof Error ? e.message : String(e)}`);
