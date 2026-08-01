@@ -4,6 +4,41 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-08-01
+
+### Added
+
+- **macOS support.** Snap Launcher now runs on macOS 13+ as well as Windows, from a single
+  cross-platform plugin. Both actions work the same way on either OS: launch or focus an app,
+  snap its window to a zone or a captured rectangle across multiple displays, and close or
+  force-quit it.
+  - Apps are picked from `/Applications`, `/System/Applications`, and `~/Applications`
+    (including one level of subfolders), or from anything with an open window, or by browsing
+    for an `.app` bundle. Keys remember an app by its **bundle identifier**, so they keep
+    working after the app is updated, renamed, or moved.
+  - Displays are enumerated with their true arrangement, including displays placed above or
+    to the left of the primary. Work areas exclude the menu bar and Dock, so a full-screen
+    zone never covers either — including when the Dock auto-hides or is moved.
+  - **Accessibility permission is required** to control windows. When it hasn't been granted,
+    keys report exactly which permission is missing and where to grant it, instead of a raw
+    scripting error. Granting it takes effect on the next key press, with no restart.
+  - You are never asked to approve individual applications: apps are launched with `open` and
+    their windows driven through System Events, so macOS asks once rather than
+    "Stream Deck wants to control …" for every app you configure.
+
+### Changed
+
+- All OS work now goes through a platform backend interface, with the existing PowerShell
+  implementation moved behind it unchanged. Windows behavior — including virtual desktops,
+  Microsoft Store apps, DPI handling, and invisible-border compensation — is unaffected, and
+  existing keys keep working with their saved settings untouched.
+- The Property Inspector adapts to the host platform: the **Virtual desktop** section is
+  hidden on macOS (Spaces expose no public API for it), the file browser offers the right
+  file types for the platform, and platform-specific help text is swapped. A virtual-desktop
+  value configured on Windows is preserved, not cleared, when the key is opened on a Mac.
+- Monitors are labelled from their arrangement position rather than their device name, since
+  macOS display identifiers are opaque numbers.
+
 ## [1.1.0] — 2026-07-30
 
 ### Added

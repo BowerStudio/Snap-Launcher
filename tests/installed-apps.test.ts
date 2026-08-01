@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildInstalledListScript, runPowerShell, type InstalledApp } from "../src/powershell.ts";
+import { buildInstalledListScript, runPowerShell, type InstalledApp } from "../src/platform/windows/powershell.ts";
 
 test("buildInstalledListScript lists installed applications", async () => {
 	const apps = await runPowerShell<InstalledApp[]>(buildInstalledListScript(), 60_000);

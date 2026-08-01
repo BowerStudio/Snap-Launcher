@@ -1,11 +1,11 @@
 {
 	"name": "snap-launcher",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"private": true,
 	"type": "module",
 	"description": "Stream Deck plugin: launch apps and snap their windows to saved positions across monitors.",
 	"scripts": {
-		"test": "node --test tests/**/*.test.ts",
+		"test": "node --import ./tests/ts-resolve.mjs --test tests/**/*.test.ts",
 		"build": "rollup -c",
 		"watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.bowerstudio.snap-launcher\"",
 		"version": "node bump-version.mjs",

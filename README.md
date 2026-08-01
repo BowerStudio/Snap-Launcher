@@ -2,14 +2,37 @@
 
 One key press launches (or focuses) an application and snaps its window into place — on any monitor in a multi-monitor layout, including monitors left of or above the primary (negative coordinates).
 
-Works with classic desktop apps (`.exe`/`.lnk`) **and Microsoft Store apps** (WhatsApp, Spotify, Settings, …).
+Runs on **Windows 10+ and macOS 13+**.
 
-Windows only: the plugin drives Windows PowerShell 5.1 and the Win32 window APIs (`SetWindowPos`, `GetWindowRect`, `EnumDisplayMonitors`).
+- On Windows it works with classic desktop apps (`.exe`/`.lnk`) **and Microsoft Store apps** (WhatsApp, Spotify, Settings, …), driving Windows PowerShell 5.1 and the Win32 window APIs (`SetWindowPos`, `GetWindowRect`, `EnumDisplayMonitors`).
+- On macOS it works with any `.app` bundle, driving `osascript` (JXA), System Events, and AppKit. **It needs Accessibility permission** — see [macOS setup](#macos-setup).
+
+Two platform differences worth knowing up front:
+
+| | Windows | macOS |
+| --- | --- | --- |
+| Extra permission needed | none | **Accessibility** (one-time) |
+| Virtual desktops / Spaces | supported | not supported — the section is hidden |
 
 Two actions:
 
 - **Launch & Position** — launch (or focus) an app, optionally on a virtual desktop, and snap its window into place.
 - **Close App** — close an app's windows gracefully (like clicking ✕), with optional force-quit.
+
+## macOS setup
+
+Moving another application's windows is a privileged operation on macOS, so **Stream Deck must be trusted for Accessibility** before Snap Launcher can position, capture, or close anything:
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. Enable **Stream Deck** in the list. (If it isn't listed, press a Snap Launcher key once — the plugin will tell you what's missing — then add Stream Deck with the **+** button.)
+3. Press the key again. No restart is needed.
+
+Until that's granted, keys show an error naming the permission and where to grant it. Browsing for apps and listing monitors keep working without it — only window control is blocked.
+
+Two notes on how the macOS side behaves:
+
+- **You are never asked to approve individual apps.** Snap Launcher launches apps with `open` and drives their windows through System Events, so macOS asks once for Accessibility rather than "Stream Deck wants to control Slack" for every app you put on a key.
+- **Spaces (virtual desktops) are not supported.** macOS has no public API to enumerate, create, name, or move another app's windows between Spaces, so the **Virtual desktop** section is hidden on macOS. A key configured with one on Windows still works on a Mac — the setting is kept and ignored.
 
 ## Quick start
 
@@ -32,13 +55,15 @@ The settings panel is organised into four sections:
 
 The **Choose from** selector switches between three ways of picking an app. All three set the same thing (the **Selected app** line always shows what's currently chosen — whichever picker you used last wins):
 
-- **Running apps** — every app that currently has a visible window. Start the app, click the refresh icon, pick it from the list. Works for everything, including Store apps.
-- **Installed apps** — everything installed on the machine (Start Menu programs plus Microsoft Store apps), no need to start the app first. Click the refresh icon after installing something new.
-- **Browse for a file** — point straight at an `.exe`, `.lnk`, `.bat`, or `.cmd`.
+- **Running apps** — every app that currently has a visible window. Start the app, click the refresh icon, pick it from the list. Works for everything, including Store apps on Windows.
+- **Installed apps** — everything installed on the machine, no need to start the app first. On Windows that's Start Menu programs plus Microsoft Store apps; on macOS it's `/Applications`, `/System/Applications`, and `~/Applications` (including one level of subfolders like Utilities). Click the refresh icon after installing something new.
+- **Browse for a file** — point straight at an `.exe`, `.lnk`, `.bat`, or `.cmd` on Windows, or an `.app` bundle on macOS.
 
 Picking an app also sets the key's title to the app's name (e.g. "WhatsApp"). Anything you type in Stream Deck's own **Title** field always takes precedence.
 
-## Virtual desktops (Windows 11)
+On macOS an app is remembered by its **bundle identifier** wherever possible, so a key keeps working after the app is updated, renamed, or moved between `/Applications` and `~/Applications`.
+
+## Virtual desktops (Windows 11 only)
 
 Type a name into **Desktop name** (e.g. `Work`, `Music`) and the key becomes desktop-aware. On every press the plugin:
 
@@ -92,7 +117,7 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 | Arguments | Application | Optional command-line arguments passed on launch. |
 | If already running | Launch | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance. |
 | Wait (seconds) | Launch | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. |
-| Desktop name | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. |
+| Desktop name | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS. |
 | Positioning | Window position | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode. |
 | Monitor / Zone | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display. |
 | X/Y/Width/Height + Capture | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand. |
@@ -109,6 +134,17 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 Keys configured with an older version of the plugin keep working unchanged — they show up as **Custom position** with their captured rectangle intact.
 
 ## How it works
+
+Both platforms follow the same shape: each key press runs **one** short-lived script (PowerShell on Windows, `osascript`/JXA on macOS) that does the whole job and prints a single line of JSON. Nothing stays resident, and the actions themselves are platform-agnostic — they talk to a backend interface, not to an OS.
+
+### On macOS
+
+- **Windows are driven through System Events, and apps are launched with `open`.** The plugin never scripts a target app directly. That is deliberate: sending an Apple Event to a specific app triggers a per-app *"Stream Deck wants to control Slack"* prompt for every app you ever put on a key. Routing everything through System Events means macOS asks once, for Accessibility, and every app works.
+- **Coordinates**: `NSScreen` reports displays bottom-left-origin, while the Accessibility API positions windows top-left-origin — the latter being the same convention the Windows side already uses. Displays are converted once at enumeration, so zone maths and captured rectangles are identical on both platforms. Work areas come from `visibleFrame`, which already excludes the menu bar and Dock, so a full-screen zone never covers either — including when the Dock auto-hides or moves.
+- **No border compensation**: unlike Win32's `GetWindowRect`, the Accessibility frame *is* the visible frame, so zone rectangles are applied as-is. Apps that enforce a minimum or fixed size simply keep the size they accept — the key still reports success rather than failing the press.
+- **Closing**: graceful close presses the window's own close button (`AXCloseButton`), exactly like clicking the red button, so apps can still raise their save prompts. Force-quit goes through `NSRunningApplication`, not the app's quit Apple Event.
+
+### On Windows
 
 - **Snap zones**: the monitor and its work area are resolved at key-press time via `EnumDisplayMonitors`, so nothing goes stale when the display layout changes. Modern Windows windows carry invisible resize borders (`GetWindowRect` extends ~7 DPI-scaled pixels past the visible frame on the left, right, and bottom); the plugin measures each window's actual borders via DWM extended frame bounds and compensates, so the *visible* window edges land flush with the zone — pixel-identical to native Windows Snap.
 - **Custom positions**: every PowerShell invocation opts into per-monitor-v2 DPI awareness, so capture and restore both use physical pixels in virtual-desktop coordinates — captured rectangles round-trip exactly across mixed-DPI monitor setups. If Windows rescales the window while it crosses onto a monitor with a different scale factor, the script verifies the final rectangle and reapplies once. Captured numbers include the invisible borders, so they read a few pixels larger than the visible frame — that's expected, and restoring them reproduces the visible layout exactly.
@@ -205,6 +241,15 @@ Before publishing:
 4. Test on a real device — at minimum the key press (launch, focus, reposition) for a zone key and a custom key, plus the Capture button, for both a classic app and a Store app.
 
 ## Troubleshooting
+
+### macOS
+
+- **"Stream Deck needs Accessibility access"**: enable **Stream Deck** under System Settings → Privacy & Security → Accessibility, then press the key again — no restart needed. See [macOS setup](#macos-setup). Note the permission belongs to the Stream Deck application, not to Snap Launcher, so it survives plugin updates but is lost if you reinstall Stream Deck itself.
+- **No Virtual desktop section**: expected. macOS Spaces have no public API for the things this feature needs, so it's Windows-only.
+- **App can't be found after moving it**: keys remember apps by bundle identifier, so this should be rare — if it happens, re-pick the app in the key settings.
+- **Window doesn't fill the zone exactly**: some macOS apps enforce a minimum or fixed window size and refuse to be resized. The key still succeeds and leaves the window at the size the app accepted.
+
+### Windows
 
 - **Nothing moves / access denied**: elevated (run-as-administrator) windows can't be repositioned by a non-elevated process (UIPI), and they don't appear in the Running apps list. Launch such apps unelevated, or run the Stream Deck software elevated (not generally recommended).
 - **App missing from the Installed apps list**: the list is built from Start Menu shortcuts and Microsoft Store packages, so portable apps that never created a shortcut won't appear — use **Browse for a file** (or **Running apps** while the app is open) instead. Click the refresh icon after installing something new.

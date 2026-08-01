@@ -8,15 +8,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import type { JsonValue } from "@elgato/utils";
 
-import {
-	buildCaptureScript,
-	buildLaunchScript,
-	buildMonitorListScript,
-	runPowerShell,
-	type CaptureResult,
-	type LaunchResult,
-	type MonitorEntry,
-} from "../powershell";
+import { getBackend } from "../platform";
 import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
 import { applyAutoTitle, sendInstalledApps, sendRunningApps } from "./pickers";
@@ -83,8 +75,7 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		}
 
 		try {
-			const config = toConfig(settings);
-			const result = await runPowerShell<LaunchResult>(buildLaunchScript(config), config.waitSeconds * 1000 + 20_000);
+			const result = await getBackend().launch(toConfig(settings));
 
 			if (result.ok) {
 				logger.debug(`ok launched=${result.launched} positioned=${result.positioned} movedDesktop=${result.movedDesktop} pid=${result.pid}`);
@@ -126,7 +117,7 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		let items: MonitorItem[] = [];
 
 		try {
-			const monitors = await runPowerShell<MonitorEntry[]>(buildMonitorListScript(), 20_000);
+			const monitors = await getBackend().listMonitors();
 			if (Array.isArray(monitors)) {
 				items = toMonitorItems(monitors);
 			}
@@ -149,7 +140,7 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		}
 
 		try {
-			const result = await runPowerShell<CaptureResult>(buildCaptureScript(toConfig(settings)), 20_000);
+			const result = await getBackend().capture(toConfig(settings));
 
 			if (result.ok) {
 				const status =

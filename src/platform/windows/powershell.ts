@@ -4,82 +4,22 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-export type PositionMode = "none" | "zone" | "custom";
+import type { CloseConfig, LaunchConfig } from "../types";
 
-/**
- * Configuration passed into the PowerShell scripts. All fields are normalized
- * (trimmed strings, clamped numbers, validated mode/zone) by toConfig() in
- * settings.ts before reaching this module.
- */
-export type LaunchConfig = {
-	appPath: string;
-	launchArgs: string;
-	titleFilter: string;
-	processName: string;
-	focusIfRunning: boolean;
-	/** How to position the window after launch/focus. */
-	positionMode: PositionMode;
-	/** Display device name (e.g. \\.\DISPLAY2) or "primary". Zone mode only. */
-	monitorId: string;
-	/** One of the 9 snap zones. Zone mode only. */
-	zone: string;
-	waitSeconds: number;
-	/** Explicit rectangle. Custom mode only. */
-	x: number;
-	y: number;
-	width: number;
-	height: number;
-	/**
-	 * Virtual desktop to run the app on (created if missing, switched to on
-	 * press). A desktop name, matched case-insensitively; "Desktop N" targets
-	 * the Nth desktop. Empty = current desktop (feature off).
-	 */
-	virtualDesktop: string;
-};
-
-export type LaunchResult =
-	| { ok: true; launched: boolean; positioned: boolean; movedDesktop: boolean; pid: number; title: string }
-	| { ok: false; error: string };
-
-export type CloseMode = "close" | "closeThenKill" | "kill";
-
-/**
- * Configuration for the Close App action. appPath/titleFilter/processName
- * identify windows exactly like LaunchConfig does (FIND_WINDOW is shared).
- */
-export type CloseConfig = {
-	appPath: string;
-	titleFilter: string;
-	processName: string;
-	closeMode: CloseMode;
-	/** closeThenKill only: grace period before force-quitting. */
-	waitSeconds: number;
-};
-
-export type CloseResult =
-	| { ok: true; found: number; closed: number; killed: number }
-	| { ok: false; error: string };
-
-export type CaptureResult =
-	| { ok: true; x: number; y: number; width: number; height: number; title: string; maximized: boolean }
-	| { ok: false; error: string };
-
-export type RunningApp = { name: string; title: string; path: string | null; display?: string };
-
-export type InstalledApp = { name: string; path: string };
-
-export type MonitorEntry = {
-	deviceName: string;
-	left: number;
-	top: number;
-	width: number;
-	height: number;
-	workLeft: number;
-	workTop: number;
-	workWidth: number;
-	workHeight: number;
-	isPrimary: boolean;
-};
+// Shared shapes now live in ../types; re-exported so existing importers of this
+// module (including the test suite) keep working unchanged.
+export type {
+	CaptureResult,
+	CloseConfig,
+	CloseMode,
+	CloseResult,
+	InstalledApp,
+	LaunchConfig,
+	LaunchResult,
+	MonitorEntry,
+	PositionMode,
+	RunningApp,
+} from "../types";
 
 /**
  * Shared prolog: strict errors, no progress noise, UTF-8 stdout so non-ASCII
