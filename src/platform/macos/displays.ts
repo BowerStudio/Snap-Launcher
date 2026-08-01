@@ -43,8 +43,10 @@ export type RawScreen = {
 export const DISPLAY_HELPERS = `
 function listDisplays() {
         var screens = $.NSScreen.screens;
-        var count = screens.count;
-        if (count === 0) return [];
+        // Number() because a bridged count arrives as a string: a strict === 0
+        // never fires, and objectAtIndex(0) below would throw instead.
+        var count = Number(screens.count);
+        if (!count) return [];
 
         // screens[0] is the menu-bar display: the origin of the flipped space.
         var primaryFrame = screens.objectAtIndex(0).frame;

@@ -136,7 +136,11 @@ export function buildInstalledListScript(): string {
         function entries(dir) {
             var contents = fm.contentsOfDirectoryAtPathError(dir, $());
             if (!contents || contents.isNil()) return [];
-            return ObjC.unwrap(contents).map(function (e) { return String(e); });
+            // ObjC.unwrap on an NSArray is shallow: the elements are still
+            // NSString refs, and String() on one of those yields the useless
+            // "[id NSTaggedPointerString]" rather than the file name. Each
+            // element has to be unwrapped in its own right.
+            return ObjC.unwrap(contents).map(function (e) { return ObjC.unwrap(e); });
         }
 
         for (var r = 0; r < roots.length; r++) {
@@ -163,40 +167,69 @@ export function buildInstalledListScript(): string {
 }
 
 /**
- * Lists applications that currently own a visible window, one entry per app.
+ * Lists the running applications a user could put on a key, one entry per app.
  *
  * Activation policy filters out agents and menu-bar-only processes, which have
- * no windows to launch or position. Window titles come from the window server
- * rather than the Accessibility API, so this works before the user has granted
- * Accessibility — an app whose title cannot be read still appears, listed under
- * its own name.
+ * no windows to launch or position. What remains is every app with a Dock icon,
+ * which needs no permission at all to enumerate.
+ *
+ * Titles are decoration on top of that, and are read from the window server
+ * rather than the Accessibility API. They require Screen Recording permission;
+ * without it the list is still complete, with each app listed under its own
+ * name. That trade is deliberate: a permission prompt must never stand between
+ * the user and a populated dropdown.
  */
 export function buildRunningListScript(): string {
 	return wrapScript(`
-        // kCGWindowListOptionOnScreenOnly (1) | kCGWindowListExcludeDesktopElements (16)
-        var infoList = $.CGWindowListCopyWindowInfo(1 | 16, 0);
+        /**
+         * Window titles by owning pid, best effort.
+         *
+         * CGWindowListCopyWindowInfo returns a CFArrayRef, and JXA has no
+         * bridging metadata for a CF return type, so it hands back an opaque
+         * Ref: it has no isNil, and ObjC.unwrap does nothing with it. Casting
+         * it to its toll-free-bridged NSArray is what makes it readable.
+         *
+         * kCGWindowName is only populated when the host holds Screen Recording
+         * permission. Without it every title is simply absent, which is why
+         * this whole step is advisory — an app with no readable title still
+         * gets listed below, under its own name.
+         */
         var titlesByPid = {};
-        if (infoList && !infoList.isNil()) {
-            var windows = ObjC.unwrap(infoList);
-            for (var w = 0; w < windows.length; w++) {
-                var win = windows[w];
-                var pid = win.kCGWindowOwnerPID;
-                if (pid === undefined || pid === null) continue;
-                // Layer 0 is the normal window layer; panels and menus sit above it.
-                if (win.kCGWindowLayer !== 0) continue;
-                var title = win.kCGWindowName ? String(win.kCGWindowName) : '';
-                if (!title.length) continue;
-                if (!titlesByPid[pid]) titlesByPid[pid] = title;
+        try {
+            // kCGWindowListOptionOnScreenOnly (1) | kCGWindowListExcludeDesktopElements (16)
+            var infoRef = $.CGWindowListCopyWindowInfo(1 | 16, 0);
+            var infoList = infoRef ? ObjC.castRefToObject(infoRef) : null;
+            var windows = infoList && !infoList.isNil() ? ObjC.deepUnwrap(infoList) : null;
+            if (windows && windows.length) {
+                for (var w = 0; w < windows.length; w++) {
+                    var win = windows[w];
+                    var pid = win.kCGWindowOwnerPID;
+                    if (pid === undefined || pid === null) continue;
+                    // Layer 0 is the normal window layer; panels and menus sit above it.
+                    if (Number(win.kCGWindowLayer) !== 0) continue;
+                    var title = win.kCGWindowName ? String(win.kCGWindowName) : '';
+                    if (!title.length) continue;
+                    if (!titlesByPid[pid]) titlesByPid[pid] = title;
+                }
             }
+        } catch (e) {
+            // Titles are a nicety; the app list itself must still be returned.
         }
 
         var items = [];
         var running = WORKSPACE.runningApplications;
-        for (var i = 0; i < running.count; i++) {
+        // Bridged counts arrive as strings; converted once rather than relying
+        // on the comparison to coerce.
+        var runningCount = Number(running.count);
+        for (var i = 0; i < runningCount; i++) {
             var app = running.objectAtIndex(i);
             // NSApplicationActivationPolicyRegular === 0: has a Dock icon and
             // can own windows. Accessory (1) and prohibited (2) cannot.
-            if (app.activationPolicy !== 0) continue;
+            //
+            // Number() is load-bearing: JXA bridges this enum property as a
+            // string, so a strict !== 0 is true for every app alive and the
+            // list comes back empty.
+            if (Number(app.activationPolicy) !== 0) continue;
 
             var url = app.bundleURL;
             var path = url && !url.isNil() ? ObjC.unwrap(url.path) : null;
