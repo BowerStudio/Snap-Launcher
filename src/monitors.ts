@@ -1,9 +1,11 @@
-import type { MonitorEntry } from "./powershell";
+import type { MonitorEntry } from "./platform";
 
 /** One monitor as the Property Inspector needs it: geometry plus a display label. */
 export type MonitorItem = {
 	value: string;
 	label: string;
+	/** Arrangement position, shown inside the monitor rectangle. */
+	index: number;
 	left: number;
 	top: number;
 	width: number;
@@ -12,18 +14,22 @@ export type MonitorItem = {
 };
 
 /**
- * Maps raw monitor geometry to Property Inspector items: sorted by the trailing
- * device number and labelled like "Monitor 2 — 1920×1080 (primary)". Bounds are
+ * Maps raw monitor geometry to Property Inspector items: sorted by arrangement
+ * position and labelled like "Monitor 2 — 1920×1080 (primary)". Bounds are
  * passed through so the PI can draw the arrangement to scale.
+ *
+ * Labels come from the backend-supplied index rather than the device name:
+ * only Windows device names happen to end in a small ordinal, while macOS
+ * display ids are opaque numbers like 724043442.
  */
 export function toMonitorItems(monitors: MonitorEntry[]): MonitorItem[] {
 	return [...monitors]
-		.sort((a, b) => a.deviceName.localeCompare(b.deviceName, undefined, { numeric: true }))
+		.sort((a, b) => a.index - b.index)
 		.map((m) => {
-			const n = /(\d+)$/.exec(m.deviceName)?.[1] ?? m.deviceName;
 			return {
 				value: m.deviceName,
-				label: `Monitor ${n} — ${m.width}×${m.height}${m.isPrimary ? " (primary)" : ""}`,
+				label: `Monitor ${m.index} — ${m.width}×${m.height}${m.isPrimary ? " (primary)" : ""}`,
+				index: m.index,
 				left: m.left,
 				top: m.top,
 				width: m.width,

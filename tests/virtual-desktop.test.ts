@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { runPowerShell, VDESK } from "../src/powershell.ts";
+import { runPowerShell, VDESK } from "../src/platform/windows/powershell.ts";
 
 type VdProbe = { ok: boolean; error?: string; count: number; current: number; names: string[]; foundByName: number };
 

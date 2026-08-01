@@ -1,0 +1,69 @@
+{
+	"comment": "Shared zone-geometry contract. The Windows (PowerShell Get-ZoneRect) and macOS (JXA zoneRect) implementations are both asserted against this table so they cannot drift apart. Right and bottom zones extend to the work-area edge, so halves tile exactly on odd dimensions.",
+	"cases": [
+		{
+			"name": "even 1920x1040 work area at the origin",
+			"workArea": { "left": 0, "top": 0, "width": 1920, "height": 1040 },
+			"zones": {
+				"full": { "x": 0, "y": 0, "width": 1920, "height": 1040 },
+				"left": { "x": 0, "y": 0, "width": 960, "height": 1040 },
+				"right": { "x": 960, "y": 0, "width": 960, "height": 1040 },
+				"top": { "x": 0, "y": 0, "width": 1920, "height": 520 },
+				"bottom": { "x": 0, "y": 520, "width": 1920, "height": 520 },
+				"topLeft": { "x": 0, "y": 0, "width": 960, "height": 520 },
+				"topRight": { "x": 960, "y": 0, "width": 960, "height": 520 },
+				"bottomLeft": { "x": 0, "y": 520, "width": 960, "height": 520 },
+				"bottomRight": { "x": 960, "y": 520, "width": 960, "height": 520 },
+				"bogus": { "x": 0, "y": 0, "width": 1920, "height": 1040 }
+			}
+		},
+		{
+			"name": "odd dimensions - right and bottom absorb the extra pixel",
+			"workArea": { "left": 0, "top": 0, "width": 1921, "height": 1041 },
+			"zones": {
+				"full": { "x": 0, "y": 0, "width": 1921, "height": 1041 },
+				"left": { "x": 0, "y": 0, "width": 960, "height": 1041 },
+				"right": { "x": 960, "y": 0, "width": 961, "height": 1041 },
+				"top": { "x": 0, "y": 0, "width": 1921, "height": 520 },
+				"bottom": { "x": 0, "y": 520, "width": 1921, "height": 521 },
+				"topLeft": { "x": 0, "y": 0, "width": 960, "height": 520 },
+				"topRight": { "x": 960, "y": 0, "width": 961, "height": 520 },
+				"bottomLeft": { "x": 0, "y": 520, "width": 960, "height": 521 },
+				"bottomRight": { "x": 960, "y": 520, "width": 961, "height": 521 },
+				"bogus": { "x": 0, "y": 0, "width": 1921, "height": 1041 }
+			}
+		},
+		{
+			"name": "negative origin - display left of and above the primary",
+			"workArea": { "left": -1920, "top": -1080, "width": 1920, "height": 1040 },
+			"zones": {
+				"full": { "x": -1920, "y": -1080, "width": 1920, "height": 1040 },
+				"left": { "x": -1920, "y": -1080, "width": 960, "height": 1040 },
+				"right": { "x": -960, "y": -1080, "width": 960, "height": 1040 },
+				"top": { "x": -1920, "y": -1080, "width": 1920, "height": 520 },
+				"bottom": { "x": -1920, "y": -560, "width": 1920, "height": 520 },
+				"topLeft": { "x": -1920, "y": -1080, "width": 960, "height": 520 },
+				"topRight": { "x": -960, "y": -1080, "width": 960, "height": 520 },
+				"bottomLeft": { "x": -1920, "y": -560, "width": 960, "height": 520 },
+				"bottomRight": { "x": -960, "y": -560, "width": 960, "height": 520 },
+				"bogus": { "x": -1920, "y": -1080, "width": 1920, "height": 1040 }
+			}
+		},
+		{
+			"name": "macOS built-in display - menu bar and Dock excluded, odd height",
+			"workArea": { "left": 0, "top": 37, "width": 1512, "height": 913 },
+			"zones": {
+				"full": { "x": 0, "y": 37, "width": 1512, "height": 913 },
+				"left": { "x": 0, "y": 37, "width": 756, "height": 913 },
+				"right": { "x": 756, "y": 37, "width": 756, "height": 913 },
+				"top": { "x": 0, "y": 37, "width": 1512, "height": 456 },
+				"bottom": { "x": 0, "y": 493, "width": 1512, "height": 457 },
+				"topLeft": { "x": 0, "y": 37, "width": 756, "height": 456 },
+				"topRight": { "x": 756, "y": 37, "width": 756, "height": 456 },
+				"bottomLeft": { "x": 0, "y": 493, "width": 756, "height": 457 },
+				"bottomRight": { "x": 756, "y": 493, "width": 756, "height": 457 },
+				"bogus": { "x": 0, "y": 37, "width": 1512, "height": 913 }
+			}
+		}
+	]
+}

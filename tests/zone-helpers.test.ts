@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { runPowerShell, ZONE_HELPERS } from "../src/powershell.ts";
+import { runPowerShell, ZONE_HELPERS } from "../src/platform/windows/powershell.ts";
 
 type Rect = { x: number; y: number; width: number; height: number };
+type ZoneCase = {
+	name: string;
+	workArea: { left: number; top: number; width: number; height: number };
+	zones: Record<string, Rect>;
+};
+
+/**
+ * The zone contract shared with the macOS implementation. Both must satisfy
+ * the same table, which is what stops the two from drifting apart — see
+ * tests/macos-window-control.test.ts for the other half.
+ */
+const zoneCases: ZoneCase[] = JSON.parse(readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8")).cases;
 
 /** Computes every zone against one work area in a single PowerShell spawn. */
 function allZoneRects(left: number, top: number, width: number, height: number): Promise<Record<string, Rect>> {
@@ -30,29 +43,15 @@ Write-Output (ConvertTo-Json -InputObject @{ device = $m.DeviceName } -Compress)
 	return runPowerShell<{ device: string }>(script, 30_000);
 }
 
-test("zones tile a 1920x1040 work area at the origin", async () => {
-	const r = await allZoneRects(0, 0, 1920, 1040);
-	assert.deepEqual(r.full, { x: 0, y: 0, width: 1920, height: 1040 });
-	assert.deepEqual(r.left, { x: 0, y: 0, width: 960, height: 1040 });
-	assert.deepEqual(r.right, { x: 960, y: 0, width: 960, height: 1040 });
-	assert.deepEqual(r.top, { x: 0, y: 0, width: 1920, height: 520 });
-	assert.deepEqual(r.bottom, { x: 0, y: 520, width: 1920, height: 520 });
-	assert.deepEqual(r.topLeft, { x: 0, y: 0, width: 960, height: 520 });
-	assert.deepEqual(r.topRight, { x: 960, y: 0, width: 960, height: 520 });
-	assert.deepEqual(r.bottomLeft, { x: 0, y: 520, width: 960, height: 520 });
-	assert.deepEqual(r.bottomRight, { x: 960, y: 520, width: 960, height: 520 });
-	assert.deepEqual(r.bogus, r.full, "unknown zone falls back to full");
-});
-
-test("odd dimensions tile exactly (right/bottom absorb the extra pixel)", async () => {
-	const r = await allZoneRects(0, 0, 1921, 1041);
-	assert.deepEqual(r.left, { x: 0, y: 0, width: 960, height: 1041 });
-	assert.deepEqual(r.right, { x: 960, y: 0, width: 961, height: 1041 });
-	assert.equal(r.left.width + r.right.width, 1921);
-	assert.deepEqual(r.top, { x: 0, y: 0, width: 1921, height: 520 });
-	assert.deepEqual(r.bottom, { x: 0, y: 520, width: 1921, height: 521 });
-	assert.equal(r.top.height + r.bottom.height, 1041);
-});
+for (const zoneCase of zoneCases) {
+	test(`Windows zone geometry matches the shared contract: ${zoneCase.name}`, async () => {
+		const { left, top, width, height } = zoneCase.workArea;
+		const actual = await allZoneRects(left, top, width, height);
+		for (const [zone, expected] of Object.entries(zoneCase.zones)) {
+			assert.deepEqual(actual[zone], expected, `${zoneCase.name} / ${zone}`);
+		}
+	});
+}
 
 test("zones respect a negative-origin work area (monitor left of primary)", async () => {
 	const r = await allZoneRects(-2560, -400, 2560, 1360);

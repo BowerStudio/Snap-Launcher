@@ -70,3 +70,27 @@ test("module imports in Node without touching the DOM, and exposes init", async 
 	assert.equal(typeof picker.zoneFromPoint, "function");
 	assert.equal(typeof picker.layoutMonitors, "function");
 });
+
+test("layoutMonitors carries the arrangement index through for labelling", () => {
+	const r = layoutMonitors([M({ value: "69733382", index: 1, isPrimary: true }), M({ value: "724043442", index: 2 })]);
+	assert.deepEqual(
+		r.monitors.map((m) => m.index),
+		[1, 2],
+		"the index is what the rectangle shows — a macOS display id is not a small ordinal",
+	);
+});
+
+test("layoutMonitors places a monitor above the primary (macOS negative top)", () => {
+	const r = layoutMonitors(
+		[
+			M({ value: "69733382", index: 1, left: 0, top: 0, width: 1512, height: 982, isPrimary: true }),
+			M({ value: "724043442", index: 2, left: -2560, top: -1440, width: 2560, height: 1440 }),
+		],
+		320,
+		180,
+	);
+	assert.equal(r.monitors[1].x, 0, "the leftmost monitor is normalised to x=0");
+	assert.equal(r.monitors[1].y, 0, "the topmost monitor is normalised to y=0");
+	assert.ok(r.monitors[0].y > r.monitors[1].y, "the primary sits below the display above it");
+	assert.ok(r.boxWidth <= 320 && r.boxHeight <= 180, "layout fits the bounds");
+});

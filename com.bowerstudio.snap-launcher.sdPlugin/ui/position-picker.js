@@ -64,6 +64,9 @@ export function layoutMonitors(monitors, maxWidth = 200, maxHeight = 110) {
 		monitors: monitors.map((m) => ({
 			value: m.value,
 			label: m.label,
+			// Supplied by the plugin: only Windows device names end in a small
+			// ordinal, while a macOS display id looks like 724043442.
+			index: m.index,
 			isPrimary: !!m.isPrimary,
 			x: Math.round((m.left - minLeft) * scale),
 			y: Math.round((m.top - minTop) * scale),
@@ -129,7 +132,7 @@ export function init() {
 		monitorsEl.innerHTML = layout.monitors
 			.map((m) => {
 				const sel = selectedMonitor === "primary" ? m.isPrimary : m.value === selectedMonitor;
-				const num = (/(\d+)$/.exec(m.value) || [])[1] || "";
+				const num = m.index == null ? "" : String(m.index);
 				return (
 					'<button type="button" class="pp-mon' +
 					(sel ? " pp-mon-sel" : "") +

@@ -1,7 +1,8 @@
-import streamDeck, { DidReceiveSettingsEvent } from "@elgato/streamdeck";
+import streamDeck from "@elgato/streamdeck";
+import type { DidReceiveSettingsEvent } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 
-import { buildInstalledListScript, buildListScript, runPowerShell, type InstalledApp, type RunningApp } from "../powershell";
+import { getBackend, type RunningApp } from "../platform";
 
 const logger = streamDeck.logger.createScope("Pickers");
 
@@ -17,7 +18,7 @@ export async function sendRunningApps(): Promise<void> {
 	let items: { label: string; value: string }[] = [];
 
 	try {
-		const apps = await runPowerShell<RunningApp[]>(buildListScript(), 20_000);
+		const apps = await getBackend().listRunningApps();
 		if (Array.isArray(apps)) {
 			const seen = new Set<string>();
 			items = apps
@@ -51,7 +52,7 @@ export async function sendInstalledApps(): Promise<void> {
 	let items: { label: string; value: string }[] = [];
 
 	try {
-		const apps = await runPowerShell<InstalledApp[]>(buildInstalledListScript(), 30_000);
+		const apps = await getBackend().listInstalledApps();
 		if (Array.isArray(apps)) {
 			items = apps
 				.filter((a) => typeof a.path === "string" && a.path.length > 0 && typeof a.name === "string" && a.name.length > 0)
@@ -99,12 +100,16 @@ export function truncate(text: string, max: number): string {
 /**
  * Fallback key title when the picked app wasn't in the last apps scan
  * (e.g. chosen via the file browser): the file name without its extension.
- * Store-app identities carry no readable name, so those yield nothing.
+ *
+ * Identity-style values carry no readable name and yield nothing: a Windows
+ * Store AUMID, and a macOS "bundle:com.tinyspeck.slackmacgap" — the trailing
+ * component of a bundle id is not a name anyone would recognise on a key.
  */
 export function friendlyName(appPath: string): string {
-	if (appPath.toLowerCase().startsWith("shell:appsfolder\\") || appPath.includes("!")) {
+	const lower = appPath.toLowerCase();
+	if (lower.startsWith("shell:appsfolder\\") || appPath.includes("!") || lower.startsWith("bundle:")) {
 		return "";
 	}
 	const base = appPath.split(/[\\/]/).pop() ?? "";
-	return base.replace(/\.(exe|lnk|bat|cmd)$/i, "");
+	return base.replace(/\.(exe|lnk|bat|cmd|app)$/i, "");
 }

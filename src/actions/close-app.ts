@@ -8,7 +8,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import type { JsonValue } from "@elgato/utils";
 
-import { buildCloseScript, runPowerShell, type CloseResult } from "../powershell";
+import { getBackend } from "../platform";
 import { toCloseConfig, type CloseSettings } from "../settings";
 import { applyAutoTitle, sendInstalledApps, sendRunningApps } from "./pickers";
 
@@ -69,10 +69,7 @@ export class CloseApp extends SingletonAction<CloseSettings> {
 		}
 
 		try {
-			const config = toCloseConfig(settings);
-			// closeThenKill spends up to waitSeconds waiting before force-quitting.
-			const timeoutMs = (config.closeMode === "closeThenKill" ? config.waitSeconds * 1000 : 0) + 20_000;
-			const result = await runPowerShell<CloseResult>(buildCloseScript(config), timeoutMs);
+			const result = await getBackend().close(toCloseConfig(settings));
 
 			if (result.ok) {
 				logger.debug(`ok found=${result.found} closed=${result.closed} killed=${result.killed}`);

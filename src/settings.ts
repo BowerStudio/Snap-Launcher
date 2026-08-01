@@ -1,4 +1,4 @@
-import type { CloseConfig, CloseMode, LaunchConfig, PositionMode } from "./powershell";
+import type { CloseConfig, CloseMode, LaunchConfig, PositionMode } from "./platform";
 
 /**
  * Per-key settings. Numeric fields may arrive as strings (they are bound to
