@@ -22,6 +22,65 @@
 				color: #7a7a7a;
 				font: 400 11px/1.5 -apple-system, "Segoe UI", sans-serif;
 			}
+			#pp-display {
+				width: 100%;
+				background: #3a3a3a;
+				border: 1px solid #555;
+				border-radius: 4px;
+				color: #dcdcdc;
+				font: 400 12px "Segoe UI", sans-serif;
+				padding: 5px 8px;
+			}
+			.pp-block {
+				display: flex;
+				justify-content: center;
+				margin: 10px 0;
+			}
+			.pp-monitors {
+				position: relative;
+			}
+			.pp-mon {
+				position: absolute;
+				margin: 0;
+				padding: 0;
+				background: #3a3a3a;
+				border: 1px solid #565656;
+				border-radius: 3px;
+				color: #8a8a8a;
+				font: 500 11px/1 "Segoe UI", sans-serif;
+				cursor: pointer;
+			}
+			.pp-mon:hover {
+				border-color: #6a6a6a;
+			}
+			.pp-mon-sel {
+				background: #0a3f6e;
+				border: 2px solid #1a8cff;
+				color: #cfe6ff;
+			}
+			.pp-screen {
+				position: relative;
+				background: #3a3a3a;
+				border: 1px solid #565656;
+				border-radius: 4px;
+				cursor: pointer;
+				overflow: hidden;
+			}
+			.pp-highlight {
+				position: absolute;
+				box-sizing: border-box;
+				left: 0;
+				top: 0;
+				width: 100%;
+				height: 100%;
+				background: rgba(26, 140, 255, 0.3);
+				border: 1px solid #1a8cff;
+				pointer-events: none;
+				transition: all 0.04s linear;
+			}
+			.pp-highlight.pp-preview {
+				background: rgba(26, 140, 255, 0.18);
+			}
 		</style>
 	</head>
 	<body>
@@ -105,29 +164,22 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<sdpi-item label="Monitor" class="zone-only" hidden>
-			<sdpi-select
-				setting="monitorId"
-				datasource="getMonitors"
-				show-refresh
-				loading="Detecting monitors…"
-				placeholder="Primary monitor"
-			></sdpi-select>
-		</sdpi-item>
+		<div class="zone-only" hidden>
+			<sdpi-item label="Display">
+				<select id="pp-display"></select>
+			</sdpi-item>
 
-		<sdpi-item label="Zone" class="zone-only" hidden>
-			<sdpi-select setting="zone">
-				<option value="full">Full screen</option>
-				<option value="left">Left half</option>
-				<option value="right">Right half</option>
-				<option value="top">Top half</option>
-				<option value="bottom">Bottom half</option>
-				<option value="topLeft">Top-left quarter</option>
-				<option value="topRight">Top-right quarter</option>
-				<option value="bottomLeft">Bottom-left quarter</option>
-				<option value="bottomRight">Bottom-right quarter</option>
-			</sdpi-select>
-		</sdpi-item>
+			<div class="pp-block">
+				<div id="pp-monitors" class="pp-monitors" aria-label="Monitor arrangement"></div>
+			</div>
+
+			<div class="pp-block">
+				<div id="pp-screen" class="pp-screen">
+					<div id="pp-highlight" class="pp-highlight"></div>
+				</div>
+			</div>
+			<div class="hint">Aim at an edge for a half, a corner for a quarter, the centre for full screen.</div>
+		</div>
 
 		<sdpi-item class="custom-only">
 			<sdpi-button onclick="SDPIComponents.streamDeckClient.send('sendToPlugin', { event: 'captureWindow' });">
@@ -188,5 +240,7 @@
 				setInterval(applyVisibility, 300);
 			});
 		</script>
+
+		<script type="module" src="position-picker.js"></script>
 	</body>
 </html>
