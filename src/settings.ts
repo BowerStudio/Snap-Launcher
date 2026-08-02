@@ -51,7 +51,17 @@ export type CloseSettings = {
 	autoTitle?: string;
 };
 
-export const ZONES: readonly string[] = ["full", "left", "right", "top", "bottom", "topLeft", "topRight", "bottomLeft", "bottomRight"];
+export const ZONES: readonly string[] = [
+	"full",
+	"left",
+	"right",
+	"top",
+	"bottom",
+	"topLeft",
+	"topRight",
+	"bottomLeft",
+	"bottomRight",
+];
 
 /** Coerces a possibly-string numeric setting; falls back when blank/invalid. */
 function num(v: number | string | undefined, fallback: number): number {

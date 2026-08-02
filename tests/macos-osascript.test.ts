@@ -66,7 +66,9 @@ test("parseLastJsonLine handles empty output", () => {
 });
 
 test("a failure result parses into the shared failure shape", () => {
-	const parsed = parseLastJsonLine<{ ok: false; error: string }>(`{"ok":false,"error":${JSON.stringify(ACCESSIBILITY_MESSAGE)}}`);
+	const parsed = parseLastJsonLine<{ ok: false; error: string }>(
+		`{"ok":false,"error":${JSON.stringify(ACCESSIBILITY_MESSAGE)}}`,
+	);
 	assert.equal(parsed.ok, true);
 	assert.equal(parsed.ok && parsed.value.ok, false);
 	assert.equal(parsed.ok && parsed.value.error, ACCESSIBILITY_MESSAGE);

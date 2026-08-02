@@ -24,7 +24,14 @@ test("a Steam identity round-trips, and nothing else parses as one", () => {
 	assert.equal(parseSteamAppId("STEAM:1361210"), "1361210", "the prefix is matched case-insensitively");
 
 	// Every other identity shape the plugin stores must not be mistaken for one.
-	for (const other of ["", "C:\\Games\\game.exe", "bundle:com.valvesoftware.steam", "shell:AppsFolder\\Foo!App", "steam:", "steam:abc"]) {
+	for (const other of [
+		"",
+		"C:\\Games\\game.exe",
+		"bundle:com.valvesoftware.steam",
+		"shell:AppsFolder\\Foo!App",
+		"steam:",
+		"steam:abc",
+	]) {
 		assert.equal(parseSteamAppId(other), null, other);
 	}
 });
@@ -216,7 +223,10 @@ test("no Steam installation yields no games rather than an error", () => {
 });
 
 test("a key resolves to the game's install directory and launch URL", () => {
-	const { steamRoot, libraryRoot } = fakeSteam([], [{ appId: "1361210", name: "Darktide", installDir: "Darktide Dir" }]);
+	const { steamRoot, libraryRoot } = fakeSteam(
+		[],
+		[{ appId: "1361210", name: "Darktide", installDir: "Darktide Dir" }],
+	);
 
 	const target = resolveSteamTarget([steamRoot], "steam:1361210", "-novid");
 
@@ -256,6 +266,9 @@ test("findSteamGame reads one manifest instead of the whole library", () => {
 		[{ appId: "110", name: "Second", installDir: "Second" }],
 	);
 
-	assert.equal(findSteamGame([steamRoot], "110")?.installDir, path.join(libraryRoot, "steamapps", "common", "Second"));
+	assert.equal(
+		findSteamGame([steamRoot], "110")?.installDir,
+		path.join(libraryRoot, "steamapps", "common", "Second"),
+	);
 	assert.equal(findSteamGame([steamRoot], "120"), null);
 });

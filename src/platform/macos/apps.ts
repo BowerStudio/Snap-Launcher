@@ -162,7 +162,8 @@ function runningAppsFor(identity, bundlePath, processNameOverride) {
  * Requires no permission: this is filesystem enumeration, nothing more.
  */
 export function buildInstalledListScript(): string {
-	return wrapScript(`
+	return wrapScript(
+		`
         var fm = $.NSFileManager.defaultManager;
         var home = ObjC.unwrap($.NSHomeDirectory());
         var roots = ['/Applications', '/System/Applications', home + '/Applications'];
@@ -211,7 +212,9 @@ export function buildInstalledListScript(): string {
 
         items.sort(function (a, b) { return a.name.localeCompare(b.name); });
         return items;
-`, APP_HELPERS);
+`,
+		APP_HELPERS,
+	);
 }
 
 /**
@@ -228,7 +231,8 @@ export function buildInstalledListScript(): string {
  * the user and a populated dropdown.
  */
 export function buildRunningListScript(): string {
-	return wrapScript(`
+	return wrapScript(
+		`
         /**
          * Window titles by owning pid, best effort.
          *
@@ -299,5 +303,7 @@ export function buildRunningListScript(): string {
 
         items.sort(function (a, b) { return a.title.localeCompare(b.title); });
         return items;
-`, APP_HELPERS);
+`,
+		APP_HELPERS,
+	);
 }

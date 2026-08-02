@@ -65,7 +65,9 @@ export function runOsascript<T>(script: string, timeoutMs: number): Promise<T> {
 		scriptFile = path.join(scriptDir, `run-${randomBytes(6).toString("hex")}.js`);
 		writeFileSync(scriptFile, script, "utf8");
 	} catch (e) {
-		return Promise.reject(new Error(`Could not write the script to a temp file: ${e instanceof Error ? e.message : String(e)}`));
+		return Promise.reject(
+			new Error(`Could not write the script to a temp file: ${e instanceof Error ? e.message : String(e)}`),
+		);
 	}
 
 	return new Promise<T>((resolve, reject) => {
@@ -100,7 +102,11 @@ export function runOsascript<T>(script: string, timeoutMs: number): Promise<T> {
 				if (error) {
 					reject(new Error(details || error.message));
 				} else {
-					reject(new Error("osascript produced no parsable output." + (details ? ` ${details.slice(0, 300)}` : "")));
+					reject(
+						new Error(
+							"osascript produced no parsable output." + (details ? ` ${details.slice(0, 300)}` : ""),
+						),
+					);
 				}
 			},
 		);

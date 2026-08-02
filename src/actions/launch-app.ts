@@ -78,7 +78,9 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			const result = await getBackend().launch(toConfig(settings));
 
 			if (result.ok) {
-				logger.debug(`ok launched=${result.launched} positioned=${result.positioned} movedDesktop=${result.movedDesktop} pid=${result.pid}`);
+				logger.debug(
+					`ok launched=${result.launched} positioned=${result.positioned} movedDesktop=${result.movedDesktop} pid=${result.pid}`,
+				);
 				await ev.action.showOk();
 			} else {
 				logger.error(`Launch failed: ${result.error}`);

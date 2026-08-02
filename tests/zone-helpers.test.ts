@@ -16,11 +16,24 @@ type ZoneCase = {
  * the same table, which is what stops the two from drifting apart — see
  * tests/macos-window-control.test.ts for the other half.
  */
-const zoneCases: ZoneCase[] = JSON.parse(readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8")).cases;
+const zoneCases: ZoneCase[] = JSON.parse(
+	readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8"),
+).cases;
 
 /** Computes every zone against one work area in a single PowerShell spawn. */
 function allZoneRects(left: number, top: number, width: number, height: number): Promise<Record<string, Rect>> {
-	const zones = ["full", "left", "right", "top", "bottom", "topLeft", "topRight", "bottomLeft", "bottomRight", "bogus"];
+	const zones = [
+		"full",
+		"left",
+		"right",
+		"top",
+		"bottom",
+		"topLeft",
+		"topRight",
+		"bottomLeft",
+		"bottomRight",
+		"bogus",
+	];
 	const script = `
 ${ZONE_HELPERS}
 $out = @{}
@@ -32,7 +45,10 @@ Write-Output (ConvertTo-Json -InputObject $out -Compress)
 	return runPowerShell<Record<string, Rect>>(script, 30_000);
 }
 
-function resolveMonitor(monitors: { DeviceName: string; IsPrimary: boolean }[], monitorId: string): Promise<{ device: string }> {
+function resolveMonitor(
+	monitors: { DeviceName: string; IsPrimary: boolean }[],
+	monitorId: string,
+): Promise<{ device: string }> {
 	const json = JSON.stringify(monitors).replace(/'/g, "''");
 	const script = `
 ${ZONE_HELPERS}

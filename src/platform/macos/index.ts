@@ -55,7 +55,10 @@ export const macosBackend: PlatformBackend = {
 	features: { virtualDesktop: false },
 
 	launch(config: LaunchConfig): Promise<LaunchResult> {
-		return runOsascript<LaunchResult>(buildLaunchScript(config, steamTarget(config)), config.waitSeconds * 1000 + OVERHEAD_MS);
+		return runOsascript<LaunchResult>(
+			buildLaunchScript(config, steamTarget(config)),
+			config.waitSeconds * 1000 + OVERHEAD_MS,
+		);
 	},
 
 	capture(config: LaunchConfig): Promise<CaptureResult> {

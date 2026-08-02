@@ -9,7 +9,10 @@ import { toMonitorItems } from "../src/monitors.ts";
 
 type Frame = { origin: { x: number; y: number }; size: { width: number; height: number } };
 
-const frame = (x: number, y: number, width: number, height: number): Frame => ({ origin: { x, y }, size: { width, height } });
+const frame = (x: number, y: number, width: number, height: number): Frame => ({
+	origin: { x, y },
+	size: { width, height },
+});
 
 function makeScreen(f: Frame, visible: Frame, screenNumber: string): unknown {
 	return {

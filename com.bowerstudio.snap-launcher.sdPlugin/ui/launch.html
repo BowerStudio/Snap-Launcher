@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 	<head>
 		<meta charset="utf-8" />
@@ -10,7 +10,10 @@
 				padding: 0 0 3px 6px;
 				border-bottom: 1px solid #4a4a4a;
 				color: #9a9a9a;
-				font: 700 11px/1.4 -apple-system, "Segoe UI", sans-serif;
+				font:
+					700 11px/1.4 -apple-system,
+					"Segoe UI",
+					sans-serif;
 				text-transform: uppercase;
 				letter-spacing: 0.05em;
 			}
@@ -20,7 +23,10 @@
 			.hint {
 				margin: 2px 0 6px 6px;
 				color: #7a7a7a;
-				font: 400 11px/1.5 -apple-system, "Segoe UI", sans-serif;
+				font:
+					400 11px/1.5 -apple-system,
+					"Segoe UI",
+					sans-serif;
 			}
 			#pp-display {
 				width: 100%;
@@ -28,7 +34,9 @@
 				border: 1px solid #555;
 				border-radius: 4px;
 				color: #dcdcdc;
-				font: 400 12px "Segoe UI", sans-serif;
+				font:
+					400 12px "Segoe UI",
+					sans-serif;
 				padding: 5px 8px;
 			}
 			.pp-block {
@@ -47,7 +55,9 @@
 				border: 1px solid #565656;
 				border-radius: 3px;
 				color: #8a8a8a;
-				font: 500 11px/1 "Segoe UI", sans-serif;
+				font:
+					500 11px/1 "Segoe UI",
+					sans-serif;
 				cursor: pointer;
 			}
 			.pp-mon:hover {
@@ -128,8 +138,8 @@
 			></sdpi-select>
 		</sdpi-item>
 		<div class="hint source-steam" hidden>
-			Every game installed in your Steam libraries. The key launches it through Steam, exactly like pressing Play — the
-			client starts first if it isn't already running.
+			Every game installed in your Steam libraries. The key launches it through Steam, exactly like pressing Play
+			— the client starts first if it isn't already running.
 		</div>
 
 		<sdpi-item label="App path" class="source-browse" hidden>
@@ -153,7 +163,10 @@
 		<div class="heading">Launch</div>
 
 		<sdpi-item label="If already running">
-			<sdpi-checkbox setting="focusIfRunning" label="Reuse the existing window instead of launching again"></sdpi-checkbox>
+			<sdpi-checkbox
+				setting="focusIfRunning"
+				label="Reuse the existing window instead of launching again"
+			></sdpi-checkbox>
 		</sdpi-item>
 
 		<sdpi-item label="Wait (seconds)">
@@ -161,8 +174,8 @@
 		</sdpi-item>
 		<div class="hint">How long to wait for the app's window after launching — raise for slow starters.</div>
 		<div class="hint source-steam" hidden>
-			Only used when the key positions the window. A game that isn't being positioned is left to start in its own time,
-			however long Steam, shader compilation and anti-cheat take.
+			Only used when the key positions the window. A game that isn't being positioned is left to start in its own
+			time, however long Steam, shader compilation and anti-cheat take.
 		</div>
 
 		<!-- ========================== Virtual desktop ========================== -->
@@ -174,12 +187,15 @@
 			<div class="heading">Virtual desktop</div>
 
 			<sdpi-item label="Desktop name">
-				<sdpi-textfield setting="virtualDesktop" placeholder="Leave empty to stay on the current desktop"></sdpi-textfield>
+				<sdpi-textfield
+					setting="virtualDesktop"
+					placeholder="Leave empty to stay on the current desktop"
+				></sdpi-textfield>
 			</sdpi-item>
 			<div class="hint">
-				Runs the app on that virtual desktop and switches to it — the desktop is created (and named) if it doesn't exist,
-				and the app's window is moved there if it's open somewhere else. Names match existing desktops ignoring case;
-				"Desktop 2" means the second desktop. Windows 11 only.
+				Runs the app on that virtual desktop and switches to it — the desktop is created (and named) if it
+				doesn't exist, and the app's window is moved there if it's open somewhere else. Names match existing
+				desktops ignoring case; "Desktop 2" means the second desktop. Windows 11 only.
 			</div>
 		</div>
 
@@ -212,11 +228,13 @@
 		</div>
 
 		<sdpi-item class="custom-only">
-			<sdpi-button onclick="SDPIComponents.streamDeckClient.send('sendToPlugin', { event: 'captureWindow' });">
+			<sdpi-button onclick="SDPIComponents.streamDeckClient.send('sendToPlugin', { event: 'captureWindow' })">
 				Capture current window position &amp; size
 			</sdpi-button>
 		</sdpi-item>
-		<div class="hint custom-only">Arrange the app's window where you want it, then click Capture — or type the numbers below.</div>
+		<div class="hint custom-only">
+			Arrange the app's window where you want it, then click Capture — or type the numbers below.
+		</div>
 
 		<sdpi-item label="X" class="custom-only">
 			<sdpi-textfield setting="x" placeholder="e.g. 2560 (negative = monitor left of primary)"></sdpi-textfield>
@@ -240,7 +258,9 @@
 
 		<!-- ============================= Advanced ============================== -->
 		<div class="heading">Advanced — window matching</div>
-		<div class="hint">Only needed when the plugin grabs the wrong window (or none at all). Most keys can leave these empty.</div>
+		<div class="hint">
+			Only needed when the plugin grabs the wrong window (or none at all). Most keys can leave these empty.
+		</div>
 
 		<sdpi-item label="Title contains">
 			<sdpi-textfield setting="titleFilter" placeholder="Optional window-title filter"></sdpi-textfield>
@@ -249,8 +269,12 @@
 		<sdpi-item label="Process name">
 			<sdpi-textfield setting="processName" placeholder="Optional override"></sdpi-textfield>
 		</sdpi-item>
-		<div class="hint win-only" hidden>Use when the launcher differs from the windowed process — e.g. WindowsTerminal.</div>
-		<div class="hint mac-only" hidden>Use when the launcher differs from the windowed process — the name as it appears in Activity Monitor.</div>
+		<div class="hint win-only" hidden>
+			Use when the launcher differs from the windowed process — e.g. WindowsTerminal.
+		</div>
+		<div class="hint mac-only" hidden>
+			Use when the launcher differs from the windowed process — the name as it appears in Activity Monitor.
+		</div>
 
 		<script type="module" src="platform.js"></script>
 

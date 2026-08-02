@@ -32,9 +32,17 @@ test("toMonitorItems sorts by arrangement index and labels each monitor", () => 
 });
 
 test("toMonitorItems passes geometry through unchanged", () => {
-	const items = toMonitorItems([mon({ deviceName: "\\\\.\\DISPLAY1", left: -1280, top: 200, width: 1280, height: 1024, isPrimary: true })]);
+	const items = toMonitorItems([
+		mon({ deviceName: "\\\\.\\DISPLAY1", left: -1280, top: 200, width: 1280, height: 1024, isPrimary: true }),
+	]);
 	assert.deepEqual(
-		{ left: items[0].left, top: items[0].top, width: items[0].width, height: items[0].height, isPrimary: items[0].isPrimary },
+		{
+			left: items[0].left,
+			top: items[0].top,
+			width: items[0].width,
+			height: items[0].height,
+			isPrimary: items[0].isPrimary,
+		},
 		{ left: -1280, top: 200, width: 1280, height: 1024, isPrimary: true },
 	);
 });

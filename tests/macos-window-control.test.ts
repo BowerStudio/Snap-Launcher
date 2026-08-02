@@ -3,10 +3,22 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
 
-import { ZONE_HELPERS, buildCaptureScript, buildCloseScript, buildLaunchScript } from "../src/platform/macos/windows.ts";
+import {
+	ZONE_HELPERS,
+	buildCaptureScript,
+	buildCloseScript,
+	buildLaunchScript,
+} from "../src/platform/macos/windows.ts";
 import { parseLastJsonLine } from "../src/platform/macos/osascript.ts";
 import { ACCESSIBILITY_MESSAGE } from "../src/platform/macos/scripts.ts";
-import type { CaptureResult, CloseConfig, CloseResult, LaunchConfig, LaunchResult, SteamTarget } from "../src/platform/types.ts";
+import type {
+	CaptureResult,
+	CloseConfig,
+	CloseResult,
+	LaunchConfig,
+	LaunchResult,
+	SteamTarget,
+} from "../src/platform/types.ts";
 
 const launch = (over: Partial<LaunchConfig> = {}): LaunchConfig => ({
 	appPath: "bundle:com.tinyspeck.slackmacgap",
@@ -48,14 +60,23 @@ const steamLaunch = (over: Partial<LaunchConfig> = {}): LaunchConfig => launch({
 /* ------------------------------- zone geometry ----------------------------- */
 
 type ZoneRect = { x: number; y: number; width: number; height: number };
-type ZoneCase = { name: string; workArea: { left: number; top: number; width: number; height: number }; zones: Record<string, ZoneRect> };
+type ZoneCase = {
+	name: string;
+	workArea: { left: number; top: number; width: number; height: number };
+	zones: Record<string, ZoneRect>;
+};
 
-const zoneCases: ZoneCase[] = JSON.parse(readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8")).cases;
+const zoneCases: ZoneCase[] = JSON.parse(
+	readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8"),
+).cases;
 
 /** The JXA zone math is pure arithmetic, so it runs and is verified here. */
 function jxaZoneRect(left: number, top: number, width: number, height: number, zone: string): ZoneRect {
 	const sandbox = { Math, result: null as unknown };
-	vm.runInNewContext(`${ZONE_HELPERS}\nresult = zoneRect(${left}, ${top}, ${width}, ${height}, ${JSON.stringify(zone)});`, sandbox);
+	vm.runInNewContext(
+		`${ZONE_HELPERS}\nresult = zoneRect(${left}, ${top}, ${width}, ${height}, ${JSON.stringify(zone)});`,
+		sandbox,
+	);
 	return JSON.parse(JSON.stringify(sandbox.result)) as ZoneRect;
 }
 
@@ -92,7 +113,10 @@ type FakeMonitor = { deviceName: string; isPrimary: boolean };
 
 function jxaResolveMonitor(monitors: FakeMonitor[], monitorId: string): FakeMonitor | null {
 	const sandbox = { Math, result: null as unknown, monitors };
-	vm.runInNewContext(`${ZONE_HELPERS}\nresult = resolveTargetMonitor(monitors, ${JSON.stringify(monitorId)});`, sandbox);
+	vm.runInNewContext(
+		`${ZONE_HELPERS}\nresult = resolveTargetMonitor(monitors, ${JSON.stringify(monitorId)});`,
+		sandbox,
+	);
 	return sandbox.result === null ? null : (JSON.parse(JSON.stringify(sandbox.result)) as FakeMonitor);
 }
 
@@ -110,7 +134,11 @@ test("the primary sentinel resolves to the primary display", () => {
 });
 
 test("a disconnected display falls back to the primary", () => {
-	assert.equal(jxaResolveMonitor(displays, "999999")?.deviceName, "69733382", "a missing display must not fail the press");
+	assert.equal(
+		jxaResolveMonitor(displays, "999999")?.deviceName,
+		"69733382",
+		"a missing display must not fail the press",
+	);
 });
 
 test("with no displays at all there is nothing to resolve", () => {
@@ -121,9 +149,15 @@ test("with no displays at all there is nothing to resolve", () => {
 
 const allScripts: [string, string][] = [
 	["launch (zone)", buildLaunchScript(launch())],
-	["launch (custom rect)", buildLaunchScript(launch({ positionMode: "custom", x: 10, y: 20, width: 800, height: 600 }))],
+	[
+		"launch (custom rect)",
+		buildLaunchScript(launch({ positionMode: "custom", x: 10, y: 20, width: 800, height: 600 })),
+	],
 	["launch (no positioning)", buildLaunchScript(launch({ positionMode: "none" }))],
-	["launch (with args and filter)", buildLaunchScript(launch({ launchArgs: "--profile work", titleFilter: "Inbox" }))],
+	[
+		"launch (with args and filter)",
+		buildLaunchScript(launch({ launchArgs: "--profile work", titleFilter: "Inbox" })),
+	],
 	["capture", buildCaptureScript(launch())],
 	["close (graceful)", buildCloseScript(close())],
 	["close (closeThenKill)", buildCloseScript(close({ closeMode: "closeThenKill" }))],
@@ -147,7 +181,10 @@ test("every window-control script gates on Accessibility before touching System 
 		const firstUse = script.indexOf("systemEvents()", script.indexOf("(function () {"));
 		assert.ok(gate > 0, `${name} calls the gate`);
 		if (firstUse !== -1) {
-			assert.ok(script.includes("function systemEvents()"), `${name} reaches System Events only through the helper`);
+			assert.ok(
+				script.includes("function systemEvents()"),
+				`${name} reaches System Events only through the helper`,
+			);
 		}
 	}
 });
@@ -209,7 +246,10 @@ test("a game's windows are recognized by its install directory", () => {
 test("a game with no files reports that, rather than timing out", () => {
 	const script = buildLaunchScript(steamLaunch(), steamGame({ installDir: "" }));
 	assert.ok(script.includes("does not appear to be installed in any Steam library"), "the message names the problem");
-	assert.ok(script.includes("!STEAM.installDir && !CFG.processName"), "unless a process-name override can identify it");
+	assert.ok(
+		script.includes("!STEAM.installDir && !CFG.processName"),
+		"unless a process-name override can identify it",
+	);
 });
 
 test("force-quitting uses NSRunningApplication, not the app's quit event", () => {
@@ -284,7 +324,8 @@ test("a permission failure parses into the failure shape", () => {
 });
 
 test("a not-found failure parses into the failure shape", () => {
-	const message = 'Could not find the application for "bundle:com.example.gone". Re-pick the app in the key settings.';
+	const message =
+		'Could not find the application for "bundle:com.example.gone". Re-pick the app in the key settings.';
 	const parsed = parseLastJsonLine<LaunchResult>(JSON.stringify({ ok: false, error: message }));
 	assert.equal(parsed.ok && parsed.value.ok === false && parsed.value.error, message);
 });

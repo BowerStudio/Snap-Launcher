@@ -10,9 +10,9 @@ Runs on **Windows 10+ and macOS 13+**.
 
 Two platform differences worth knowing up front:
 
-| | Windows | macOS |
-| --- | --- | --- |
-| Extra permission needed | none | **Accessibility** (one-time) |
+|                           | Windows   | macOS                                 |
+| ------------------------- | --------- | ------------------------------------- |
+| Extra permission needed   | none      | **Accessibility** (one-time)          |
 | Virtual desktops / Spaces | supported | not supported — the section is hidden |
 
 Two actions:
@@ -44,13 +44,13 @@ Two notes on how the macOS side behaves:
 
 The settings panel is organised into four sections:
 
-| Section | What's in it |
-| --- | --- |
-| **Application** | Which app to launch, and any command-line arguments. |
-| **Launch** | Whether to reuse an already-running window, and how long to wait for a window after launching. |
-| **Virtual desktop** | Optionally run the app on a named Windows 11 virtual desktop — created on the fly, switched to on press. |
-| **Window position** | Where the window goes: a snap zone on a chosen monitor, an exact captured rectangle, or nowhere. |
-| **Advanced — window matching** | Only needed when the plugin grabs the wrong window. Most keys leave these empty. |
+| Section                        | What's in it                                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Application**                | Which app to launch, and any command-line arguments.                                                     |
+| **Launch**                     | Whether to reuse an already-running window, and how long to wait for a window after launching.           |
+| **Virtual desktop**            | Optionally run the app on a named Windows 11 virtual desktop — created on the fly, switched to on press. |
+| **Window position**            | Where the window goes: a snap zone on a chosen monitor, an exact captured rectangle, or nowhere.         |
+| **Advanced — window matching** | Only needed when the plugin grabs the wrong window. Most keys leave these empty.                         |
 
 ## Choosing the application
 
@@ -78,12 +78,12 @@ Pressing the key **launches the game through Steam**, exactly like clicking Play
 Positioning, virtual desktops, and the **Close App** action all work on a game like they do on any other app:
 
 - **Windows are matched by the game's install folder**, because a game's executable name is the developer's choice and can change with an update. Everything Steam installed for the game — the game itself, a launcher, an anti-cheat front-end — lives under that folder, so that's the boundary used. The **Process name** override still works if you need to pin down one executable exactly.
-- **A game you aren't positioning is never waited for.** Games can spend minutes in Steam's bootstrap, shader compilation, and anti-cheat checks. With **Positioning** set to *Don't move the window*, the key hands the game to Steam and reports success immediately rather than failing on a timeout. Set a zone or a captured rectangle and the key does wait — raise **Wait (seconds)** well above the default 10 for a game.
+- **A game you aren't positioning is never waited for.** Games can spend minutes in Steam's bootstrap, shader compilation, and anti-cheat checks. With **Positioning** set to _Don't move the window_, the key hands the game to Steam and reports success immediately rather than failing on a timeout. Set a zone or a captured rectangle and the key does wait — raise **Wait (seconds)** well above the default 10 for a game.
 - **Fullscreen games can't be repositioned.** That's the game's own display mode, not a plugin limitation — switch the game to windowed or borderless if you want a key to snap it.
 
 A key stores the game's **Steam app id**, so it keeps working when the game is updated, verified, or moved to another library folder or drive. If the game is uninstalled, the key says so by name instead of failing obscurely.
 
-Games installed by other launchers, and *non-Steam shortcuts* you've added to your Steam library, aren't listed — point a key at those with **Installed apps** or **Browse for a file**.
+Games installed by other launchers, and _non-Steam shortcuts_ you've added to your Steam library, aren't listed — point a key at those with **Installed apps** or **Browse for a file**.
 
 ## Virtual desktops (Windows 11 only)
 
@@ -94,7 +94,7 @@ Type a name into **Desktop name** (e.g. `Work`, `Music`) and the key becomes des
 3. Launches the app there — or, if it's already running on another desktop, **moves its window over**.
 4. Applies the normal window positioning (zone or captured rectangle).
 
-So one key press can mean: "take me to my *Comms* desktop with WhatsApp snapped to the right half" — whether or not that desktop or app was open beforehand. Leave the field empty (the default) and everything happens on the current desktop, as before.
+So one key press can mean: "take me to my _Comms_ desktop with WhatsApp snapped to the right half" — whether or not that desktop or app was open beforehand. Leave the field empty (the default) and everything happens on the current desktop, as before.
 
 Windows 11 only — Windows 10 exposes no API for this, and a key with a desktop name set will show a clear error there.
 
@@ -132,26 +132,26 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 
 ### All settings
 
-| Setting | Section | What it does |
-| --- | --- | --- |
-| Choose from | Application | Which picker is shown: **Running apps**, **Installed apps**, **Steam games**, or **Browse for a file**. All four set the same app. |
-| Running / Installed apps / Steam games / App path | Application | The app to launch. The **Selected app** line below always shows the current choice. |
-| Arguments | Application | Optional command-line arguments passed on launch. For a Steam game they're passed on top of its Steam launch options. |
-| If already running | Launch | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance. |
-| Wait (seconds) | Launch | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. Unused for a Steam game that isn't being positioned, which is never waited for. |
-| Desktop name | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS. |
-| Positioning | Window position | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode. |
-| Monitor / Zone | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display. |
-| X/Y/Width/Height + Capture | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand. |
-| Title contains | Advanced | Only match windows whose title contains this text — disambiguates multi-window apps. |
-| Process name | Advanced | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed. |
+| Setting                                           | Section         | What it does                                                                                                                                                                    |
+| ------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Choose from                                       | Application     | Which picker is shown: **Running apps**, **Installed apps**, **Steam games**, or **Browse for a file**. All four set the same app.                                              |
+| Running / Installed apps / Steam games / App path | Application     | The app to launch. The **Selected app** line below always shows the current choice.                                                                                             |
+| Arguments                                         | Application     | Optional command-line arguments passed on launch. For a Steam game they're passed on top of its Steam launch options.                                                           |
+| If already running                                | Launch          | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance.                                                                             |
+| Wait (seconds)                                    | Launch          | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. Unused for a Steam game that isn't being positioned, which is never waited for. |
+| Desktop name                                      | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS.                |
+| Positioning                                       | Window position | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode.                                                         |
+| Monitor / Zone                                    | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display.                                                                         |
+| X/Y/Width/Height + Capture                        | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand.                                                                                              |
+| Title contains                                    | Advanced        | Only match windows whose title contains this text — disambiguates multi-window apps.                                                                                            |
+| Process name                                      | Advanced        | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed.                                                       |
 
 **Close App** keys share the Application and Advanced settings above, plus:
 
-| Setting | What it does |
-| --- | --- |
-| How to close | **Close gracefully** (default), **Close, force-quit if still open**, or **Force-quit immediately**. |
-| Wait (seconds) | Grace period before the force-quit kicks in (default 5). Only shown for the middle mode. |
+| Setting        | What it does                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| How to close   | **Close gracefully** (default), **Close, force-quit if still open**, or **Force-quit immediately**. |
+| Wait (seconds) | Grace period before the force-quit kicks in (default 5). Only shown for the middle mode.            |
 
 Keys configured with an older version of the plugin keep working unchanged — they show up as **Custom position** with their captured rectangle intact.
 
@@ -168,14 +168,14 @@ Both platforms follow the same shape: each key press runs **one** short-lived sc
 
 ### On macOS
 
-- **Windows are driven through System Events, and apps are launched with `open`.** The plugin never scripts a target app directly. That is deliberate: sending an Apple Event to a specific app triggers a per-app *"Stream Deck wants to control Slack"* prompt for every app you ever put on a key. Routing everything through System Events means macOS asks once, for Accessibility, and every app works.
+- **Windows are driven through System Events, and apps are launched with `open`.** The plugin never scripts a target app directly. That is deliberate: sending an Apple Event to a specific app triggers a per-app _"Stream Deck wants to control Slack"_ prompt for every app you ever put on a key. Routing everything through System Events means macOS asks once, for Accessibility, and every app works.
 - **Coordinates**: `NSScreen` reports displays bottom-left-origin, while the Accessibility API positions windows top-left-origin — the latter being the same convention the Windows side already uses. Displays are converted once at enumeration, so zone maths and captured rectangles are identical on both platforms. Work areas come from `visibleFrame`, which already excludes the menu bar and Dock, so a full-screen zone never covers either — including when the Dock auto-hides or moves.
-- **No border compensation**: unlike Win32's `GetWindowRect`, the Accessibility frame *is* the visible frame, so zone rectangles are applied as-is. Apps that enforce a minimum or fixed size simply keep the size they accept — the key still reports success rather than failing the press.
+- **No border compensation**: unlike Win32's `GetWindowRect`, the Accessibility frame _is_ the visible frame, so zone rectangles are applied as-is. Apps that enforce a minimum or fixed size simply keep the size they accept — the key still reports success rather than failing the press.
 - **Closing**: graceful close presses the window's own close button (`AXCloseButton`), exactly like clicking the red button, so apps can still raise their save prompts. Force-quit goes through `NSRunningApplication`, not the app's quit Apple Event.
 
 ### On Windows
 
-- **Snap zones**: the monitor and its work area are resolved at key-press time via `EnumDisplayMonitors`, so nothing goes stale when the display layout changes. Modern Windows windows carry invisible resize borders (`GetWindowRect` extends ~7 DPI-scaled pixels past the visible frame on the left, right, and bottom); the plugin measures each window's actual borders via DWM extended frame bounds and compensates, so the *visible* window edges land flush with the zone — pixel-identical to native Windows Snap.
+- **Snap zones**: the monitor and its work area are resolved at key-press time via `EnumDisplayMonitors`, so nothing goes stale when the display layout changes. Modern Windows windows carry invisible resize borders (`GetWindowRect` extends ~7 DPI-scaled pixels past the visible frame on the left, right, and bottom); the plugin measures each window's actual borders via DWM extended frame bounds and compensates, so the _visible_ window edges land flush with the zone — pixel-identical to native Windows Snap.
 - **Custom positions**: every PowerShell invocation opts into per-monitor-v2 DPI awareness, so capture and restore both use physical pixels in virtual-desktop coordinates — captured rectangles round-trip exactly across mixed-DPI monitor setups. If Windows rescales the window while it crosses onto a monitor with a different scale factor, the script verifies the final rectangle and reapplies once. Captured numbers include the invisible borders, so they read a few pixels larger than the visible frame — that's expected, and restoring them reproduces the visible layout exactly.
 - **Store / UWP apps**: launched by AppUserModelId through the shell (their exes under `WindowsApps` are ACL-protected). Windows are matched by app package, so launcher stubs like `WhatsApp.Root.exe` spawning `WhatsApp.exe` still resolve, and the plugin repositions the `ApplicationFrameHost` frame that actually hosts UWP windows. Bare `WindowsApps` exe paths from old configs are converted to the package identity automatically.
 - **Installed apps list**: classic apps come from Start Menu shortcuts (all-users and per-user) whose target is an `.exe` — picking one saves the `.lnk` path, which the launcher resolves like any shortcut. Store apps come from the shell's `AppsFolder` and are saved as `shell:AppsFolder\<AppUserModelId>`, the same form the Running-apps list produces.
@@ -269,9 +269,9 @@ Before publishing:
 
 1. Bump the version in `com.bowerstudio.snap-launcher.sdPlugin/manifest.json` (`Version`, four segments, e.g. `1.2.0.0`) and keep `package.json`'s `version` in step.
 2. Replace the placeholder UUID `com.bowerstudio.snap-launcher` with your own reverse-DNS identifier **everywhere** — it is permanent once published:
-   - `manifest.json` → `UUID` and the action's `UUID`
-   - `src/actions/launch-app.ts` → the `@action({ UUID: … })` decorator
-   - the `.sdPlugin` folder name, `rollup.config.mjs` → `sdPlugin` constant, and the `streamdeck restart` name in `package.json`
+    - `manifest.json` → `UUID` and the action's `UUID`
+    - `src/actions/launch-app.ts` → the `@action({ UUID: … })` decorator
+    - the `.sdPlugin` folder name, `rollup.config.mjs` → `sdPlugin` constant, and the `streamdeck restart` name in `package.json`
 3. Set `Nodejs.Debug` to `"disabled"` in `manifest.json` and lower the log level in `src/plugin.ts` (it's `debug` for development).
 4. Test on a real device — at minimum the key press (launch, focus, reposition) for a zone key and a custom key, plus the Capture button, for a classic app, a Store app, and a Steam game (both with and without positioning).
 
@@ -280,7 +280,7 @@ Before publishing:
 ### Steam games
 
 - **The Steam games list is empty**: Steam isn't installed where the plugin looks, or no games are fully installed. Click the refresh icon after installing a game. On Windows the plugin reads Steam's own registry entry, then falls back to `Program Files (x86)\Steam`; on macOS it looks in `~/Library/Application Support/Steam`.
-- **A game is missing from the list**: games still downloading, and games installed by other launchers or added as *non-Steam shortcuts*, aren't listed. Use **Installed apps** or **Browse for a file** for those.
+- **A game is missing from the list**: games still downloading, and games installed by other launchers or added as _non-Steam shortcuts_, aren't listed. Use **Installed apps** or **Browse for a file** for those.
 - **"…does not appear to be installed in any Steam library"**: the game was uninstalled or moved to a drive that isn't mounted. Reinstall it, or re-pick the game in the key settings.
 - **The game launches but the window isn't positioned**: fullscreen games can't be moved — switch the game to windowed or borderless mode. If it is windowed, raise **Wait (seconds)** (games are slow to show a window) and check the game isn't applying its own saved geometry afterwards.
 - **The wrong window is grabbed**: some games show a launcher window first. Add a **Title contains** filter matching the real game window, or set **Process name** to the game's executable.
@@ -303,5 +303,5 @@ Before publishing:
 - **Timed out waiting for a window**: slow-starting apps need a larger **Wait (seconds)**; splash-screen apps sometimes need a **Title contains** filter so the real window is matched.
 - **Capture errors**: the app must be running with a visible (not minimized) window when you click Capture.
 - **"Virtual desktop control is unavailable"**: virtual desktops need Windows 11 (build 22000+). If you're on Windows 11 and it still fails, a Windows update may have changed the internal desktop interfaces — clear the **Desktop name** field to keep using the key on the current desktop, and check for a plugin update.
-- **Wrong desktop targeted by "Desktop N"**: a name like `Desktop 2` first matches a desktop actually *named* "Desktop 2", then falls back to the second desktop by position. Renamed desktops are matched by their name only.
+- **Wrong desktop targeted by "Desktop N"**: a name like `Desktop 2` first matches a desktop actually _named_ "Desktop 2", then falls back to the second desktop by position. Renamed desktops are matched by their name only.
 - **Offline machines**: the Property Inspector loads `sdpi-components` from its CDN. If offline, download `sdpi-components.js` into `ui/` and change the `<script src>` in `ui/launch.html` to the local file.

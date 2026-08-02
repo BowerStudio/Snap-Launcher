@@ -165,7 +165,11 @@ export function findSteamGame(steamRoots: readonly string[], appId: string): Ste
  * naming the game. What is never returned is a target the caller then has to
  * second-guess.
  */
-export function resolveSteamTarget(steamRoots: readonly string[], identity: string, launchArgs = ""): SteamTarget | null {
+export function resolveSteamTarget(
+	steamRoots: readonly string[],
+	identity: string,
+	launchArgs = "",
+): SteamTarget | null {
 	const appId = parseSteamAppId(identity);
 	if (!appId) {
 		return null;

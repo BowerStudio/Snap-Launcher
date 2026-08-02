@@ -14,7 +14,10 @@ import { friendlyName } from "../src/actions/pickers.ts";
 /* --------------------------------- identity -------------------------------- */
 
 test("an app with a bundle id is stored by that id", () => {
-	assert.equal(appIdentity("/Applications/Slack.app", "com.tinyspeck.slackmacgap"), "bundle:com.tinyspeck.slackmacgap");
+	assert.equal(
+		appIdentity("/Applications/Slack.app", "com.tinyspeck.slackmacgap"),
+		"bundle:com.tinyspeck.slackmacgap",
+	);
 });
 
 test("an app without a bundle id falls back to its path", () => {
@@ -199,9 +202,10 @@ test("the same app in two roots appears once", () => {
 });
 
 test("an app with no bundle id is still listed, by path", () => {
-	const items = runInstalled({ "/Applications": ["Odd.app"], "/System/Applications": [], "/Users/dean/Applications": [] }, [
-		{ path: "/Applications/Odd.app", id: null },
-	]);
+	const items = runInstalled(
+		{ "/Applications": ["Odd.app"], "/System/Applications": [], "/Users/dean/Applications": [] },
+		[{ path: "/Applications/Odd.app", id: null }],
+	);
 
 	assert.deepEqual(items, [{ name: "Odd", path: "/Applications/Odd.app" }]);
 });
@@ -215,11 +219,7 @@ test("unreadable directories yield an empty list rather than an error", () => {
 type RunningItem = { name: string; title: string; path: string; display: string };
 type FakeApp = { policy: number; path: string | null; id: string | null; name: string; pid: number };
 
-function runRunning(
-	apps: FakeApp[],
-	windows: Record<string, unknown>[],
-	windowList?: () => unknown,
-): RunningItem[] {
+function runRunning(apps: FakeApp[], windows: Record<string, unknown>[], windowList?: () => unknown): RunningItem[] {
 	const sandbox = baseSandbox([]);
 	const $ = sandbox.$ as Record<string, unknown>;
 	($.NSWorkspace as { sharedWorkspace: Record<string, unknown> }).sharedWorkspace = {
@@ -229,7 +229,10 @@ function runRunning(
 			count: String(apps.length),
 			objectAtIndex: (i: number) => ({
 				activationPolicy: String(apps[i].policy),
-				bundleURL: apps[i].path === null ? { isNil: () => true } : { isNil: () => false, path: nsString(apps[i].path) },
+				bundleURL:
+					apps[i].path === null
+						? { isNil: () => true }
+						: { isNil: () => false, path: nsString(apps[i].path) },
 				bundleIdentifier: nsString(apps[i].id),
 				localizedName: nsString(apps[i].name),
 				// A pid, unlike the enums above, really does arrive as a number.
@@ -271,7 +274,13 @@ test("background-only applications are excluded", () => {
 			regular({}),
 			// Accessory: menu-bar-only, no Dock icon, no windows to position.
 			regular({ policy: 1, path: "/Applications/Agent.app", id: "com.example.agent", name: "Agent", pid: 502 }),
-			regular({ policy: 2, path: "/Applications/Hidden.app", id: "com.example.hidden", name: "Hidden", pid: 503 }),
+			regular({
+				policy: 2,
+				path: "/Applications/Hidden.app",
+				id: "com.example.hidden",
+				name: "Hidden",
+				pid: 503,
+			}),
 		],
 		[{ kCGWindowOwnerPID: 501, kCGWindowLayer: 0, kCGWindowName: "Slack" }],
 	);

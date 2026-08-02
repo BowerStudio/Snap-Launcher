@@ -17,7 +17,9 @@ export const ACCESSIBILITY_MESSAGE =
  * file is written.
  */
 export function jsLiteral(value: unknown): string {
-	return JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+	return JSON.stringify(value)
+		.replace(/\u2028/g, "\\u2028")
+		.replace(/\u2029/g, "\\u2029");
 }
 
 /**

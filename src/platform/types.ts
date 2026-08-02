@@ -64,9 +64,7 @@ export type CloseConfig = {
 	waitSeconds: number;
 };
 
-export type CloseResult =
-	| { ok: true; found: number; closed: number; killed: number }
-	| { ok: false; error: string };
+export type CloseResult = { ok: true; found: number; closed: number; killed: number } | { ok: false; error: string };
 
 export type CaptureResult =
 	| { ok: true; x: number; y: number; width: number; height: number; title: string; maximized: boolean }

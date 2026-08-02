@@ -69,7 +69,13 @@ async function sendAppList(event: string, scan: () => Promise<InstalledApp[]>, w
 		const apps = await scan();
 		if (Array.isArray(apps)) {
 			items = apps
-				.filter((a) => typeof a.path === "string" && a.path.length > 0 && typeof a.name === "string" && a.name.length > 0)
+				.filter(
+					(a) =>
+						typeof a.path === "string" &&
+						a.path.length > 0 &&
+						typeof a.name === "string" &&
+						a.name.length > 0,
+				)
 				.map((a) => {
 					appNames.set(a.path, a.name);
 					return { label: truncate(a.name, 50), value: a.path };
@@ -122,7 +128,12 @@ export function truncate(text: string, max: number): string {
  */
 export function friendlyName(appPath: string): string {
 	const lower = appPath.toLowerCase();
-	if (lower.startsWith("shell:appsfolder\\") || appPath.includes("!") || lower.startsWith("bundle:") || lower.startsWith("steam:")) {
+	if (
+		lower.startsWith("shell:appsfolder\\") ||
+		appPath.includes("!") ||
+		lower.startsWith("bundle:") ||
+		lower.startsWith("steam:")
+	) {
 		return "";
 	}
 	const base = appPath.split(/[\\/]/).pop() ?? "";

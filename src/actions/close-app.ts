@@ -76,7 +76,9 @@ export class CloseApp extends SingletonAction<CloseSettings> {
 				const status =
 					result.found === 0
 						? "Nothing to close — the app wasn't running."
-						: `Closed ${result.closed} window(s)` + (result.killed > 0 ? `, force-quit ${result.killed} process(es)` : "") + ".";
+						: `Closed ${result.closed} window(s)` +
+							(result.killed > 0 ? `, force-quit ${result.killed} process(es)` : "") +
+							".";
 				await this.setStatus(ev.action, status);
 				await ev.action.showOk();
 			} else {

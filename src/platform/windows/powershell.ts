@@ -1243,7 +1243,11 @@ export function runPowerShell<T>(script: string, timeoutMs: number): Promise<T> 
 		// Prepend a UTF-8 BOM: PS 5.1 assumes ANSI for BOM-less files.
 		writeFileSync(scriptFile, String.fromCharCode(0xfeff) + script, "utf8");
 	} catch (e) {
-		return Promise.reject(new Error(`Could not write the PowerShell script to a temp file: ${e instanceof Error ? e.message : String(e)}`));
+		return Promise.reject(
+			new Error(
+				`Could not write the PowerShell script to a temp file: ${e instanceof Error ? e.message : String(e)}`,
+			),
+		);
 	}
 
 	return new Promise<T>((resolve, reject) => {
@@ -1278,7 +1282,12 @@ export function runPowerShell<T>(script: string, timeoutMs: number): Promise<T> 
 				if (error) {
 					reject(new Error((stderr ?? "").toString().trim() || error.message));
 				} else {
-					reject(new Error("PowerShell produced no parsable output." + (lines.length ? " Last line: " + lines[lines.length - 1].slice(0, 300) : "")));
+					reject(
+						new Error(
+							"PowerShell produced no parsable output." +
+								(lines.length ? " Last line: " + lines[lines.length - 1].slice(0, 300) : ""),
+						),
+					);
 				}
 			},
 		);
