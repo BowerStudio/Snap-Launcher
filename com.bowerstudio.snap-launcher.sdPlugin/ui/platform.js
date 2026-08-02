@@ -67,7 +67,12 @@ export function applyPlatform(host, doc = document) {
 	// A file picker offers the application file types of the host platform. With
 	// no platform, it stays unfiltered rather than offering the wrong ones.
 	doc.querySelectorAll("[data-accept-windows]").forEach((el) => {
-		const accept = host === "mac" ? el.getAttribute("data-accept-mac") : host === "windows" ? el.getAttribute("data-accept-windows") : null;
+		const accept =
+			host === "mac"
+				? el.getAttribute("data-accept-mac")
+				: host === "windows"
+					? el.getAttribute("data-accept-windows")
+					: null;
 		if (accept) {
 			el.setAttribute("accept", accept);
 		} else {

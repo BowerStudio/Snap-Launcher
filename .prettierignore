@@ -1,0 +1,7 @@
+node_modules/
+com.bowerstudio.snap-launcher.sdPlugin/bin/
+com.bowerstudio.snap-launcher.sdPlugin/logs/
+com.bowerstudio.snap-launcher.streamDeckPlugin
+marketplace_assets/
+logs/
+package-lock.json

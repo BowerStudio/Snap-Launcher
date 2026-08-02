@@ -44,6 +44,13 @@ export type PlatformBackend = {
 	/** User-facing installed applications, sorted by name. */
 	listInstalledApps(): Promise<InstalledApp[]>;
 
+	/**
+	 * Installed Steam games, sorted by name; empty when Steam isn't installed.
+	 * Separate from listInstalledApps() because a library of games would swamp
+	 * the applications list, and because a game is picked for its own reasons.
+	 */
+	listSteamGames(): Promise<InstalledApp[]>;
+
 	/** Connected displays with bounds and work areas. */
 	listMonitors(): Promise<MonitorEntry[]>;
 };

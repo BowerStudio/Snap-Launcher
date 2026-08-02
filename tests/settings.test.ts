@@ -6,7 +6,13 @@ import { toConfig } from "../src/settings.ts";
 const RECT = { x: "100", y: "50", width: "800", height: "600" };
 
 test("explicit positionMode wins over legacy applyPosition", () => {
-	const c = toConfig({ appPath: "a.exe", positionMode: "zone", applyPosition: false, monitorId: "\\\\.\\DISPLAY2", zone: "left" });
+	const c = toConfig({
+		appPath: "a.exe",
+		positionMode: "zone",
+		applyPosition: false,
+		monitorId: "\\\\.\\DISPLAY2",
+		zone: "left",
+	});
 	assert.equal(c.positionMode, "zone");
 	assert.equal(c.monitorId, "\\\\.\\DISPLAY2");
 	assert.equal(c.zone, "left");

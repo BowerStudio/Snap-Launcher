@@ -15,6 +15,7 @@ export type LaunchConfig = {
 	/**
 	 * Opaque per-platform application identity. Windows: an exe/.lnk path or
 	 * "shell:AppsFolder\<AUMID>". macOS: an .app bundle path or bundle id.
+	 * Either platform additionally accepts "steam:<appid>" — see SteamTarget.
 	 */
 	appPath: string;
 	launchArgs: string;
@@ -63,9 +64,7 @@ export type CloseConfig = {
 	waitSeconds: number;
 };
 
-export type CloseResult =
-	| { ok: true; found: number; closed: number; killed: number }
-	| { ok: false; error: string };
+export type CloseResult = { ok: true; found: number; closed: number; killed: number } | { ok: false; error: string };
 
 export type CaptureResult =
 	| { ok: true; x: number; y: number; width: number; height: number; title: string; maximized: boolean }
@@ -74,6 +73,28 @@ export type CaptureResult =
 export type RunningApp = { name: string; title: string; path: string | null; display?: string };
 
 export type InstalledApp = { name: string; path: string };
+
+/**
+ * A "steam:<appid>" appPath resolved against the local Steam installation, and
+ * passed to the platform scripts alongside the config. Resolved per operation
+ * rather than persisted: a game can be moved between library folders, updated,
+ * or uninstalled at any time, and the key must follow it.
+ */
+export type SteamTarget = {
+	/** Steam's own application id, digits only. */
+	appId: string;
+	/** The game's name as Steam records it, for key titles and error messages. */
+	name: string;
+	/**
+	 * Absolute directory the game's files live in, or "" when it is not
+	 * installed. A Steam game's executable name is not knowable in advance, so
+	 * its windows are recognized by their process living inside this directory
+	 * — the same way Store apps are matched by their package location.
+	 */
+	installDir: string;
+	/** The steam:// URL that starts the game, launch arguments included. */
+	launchUrl: string;
+};
 
 /**
  * One connected display. Coordinates are in a single global space whose origin

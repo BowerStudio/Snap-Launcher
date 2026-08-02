@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 	<head>
 		<meta charset="utf-8" />
@@ -10,7 +10,10 @@
 				padding: 0 0 3px 6px;
 				border-bottom: 1px solid #4a4a4a;
 				color: #9a9a9a;
-				font: 700 11px/1.4 -apple-system, "Segoe UI", sans-serif;
+				font:
+					700 11px/1.4 -apple-system,
+					"Segoe UI",
+					sans-serif;
 				text-transform: uppercase;
 				letter-spacing: 0.05em;
 			}
@@ -20,7 +23,10 @@
 			.hint {
 				margin: 2px 0 6px 6px;
 				color: #7a7a7a;
-				font: 400 11px/1.5 -apple-system, "Segoe UI", sans-serif;
+				font:
+					400 11px/1.5 -apple-system,
+					"Segoe UI",
+					sans-serif;
 			}
 		</style>
 	</head>
@@ -32,11 +38,12 @@
 			<sdpi-select setting="appSource">
 				<option value="installed">Installed apps</option>
 				<option value="running">Running apps</option>
+				<option value="steam">Steam games</option>
 				<option value="browse">Browse for a file</option>
 			</sdpi-select>
 		</sdpi-item>
 
-		<!-- All three pickers write the same "appPath" setting; the "Choose from"
+		<!-- All four pickers write the same "appPath" setting; the "Choose from"
 		     selector only decides which one is visible. -->
 		<sdpi-item label="Installed apps" class="source-installed">
 			<sdpi-select
@@ -47,6 +54,20 @@
 				placeholder="Pick an installed app"
 			></sdpi-select>
 		</sdpi-item>
+
+		<sdpi-item label="Steam games" class="source-steam" hidden>
+			<sdpi-select
+				setting="appPath"
+				datasource="getSteamGames"
+				show-refresh
+				loading="Scanning Steam libraries…"
+				placeholder="Pick an installed Steam game"
+			></sdpi-select>
+		</sdpi-item>
+		<div class="hint source-steam" hidden>
+			Closes the game itself, not Steam. Many games ignore a graceful close — if the key reports windows closed
+			but the game stays up, use one of the force-quit modes.
+		</div>
 
 		<sdpi-item label="Running apps" class="source-running" hidden>
 			<sdpi-select
@@ -79,8 +100,8 @@
 			</sdpi-select>
 		</sdpi-item>
 		<div class="hint">
-			Graceful closing lets the app prompt to save unsaved work. Force-quit ends the process without asking — unsaved
-			work is lost.
+			Graceful closing lets the app prompt to save unsaved work. Force-quit ends the process without asking —
+			unsaved work is lost.
 		</div>
 
 		<sdpi-item label="Wait (seconds)" class="kill-wait" hidden>
@@ -94,7 +115,9 @@
 
 		<!-- ============================= Advanced ============================== -->
 		<div class="heading">Advanced — window matching</div>
-		<div class="hint">Only needed when the wrong windows get closed (or none at all). Most keys can leave these empty.</div>
+		<div class="hint">
+			Only needed when the wrong windows get closed (or none at all). Most keys can leave these empty.
+		</div>
 
 		<sdpi-item label="Title contains">
 			<sdpi-textfield setting="titleFilter" placeholder="Optional window-title filter"></sdpi-textfield>
@@ -103,8 +126,12 @@
 		<sdpi-item label="Process name">
 			<sdpi-textfield setting="processName" placeholder="Optional override"></sdpi-textfield>
 		</sdpi-item>
-		<div class="hint win-only" hidden>Use when the launcher differs from the windowed process — e.g. WindowsTerminal.</div>
-		<div class="hint mac-only" hidden>Use when the launcher differs from the windowed process — the name as it appears in Activity Monitor.</div>
+		<div class="hint win-only" hidden>
+			Use when the launcher differs from the windowed process — e.g. WindowsTerminal.
+		</div>
+		<div class="hint mac-only" hidden>
+			Use when the launcher differs from the windowed process — the name as it appears in Activity Monitor.
+		</div>
 
 		<script type="module" src="platform.js"></script>
 
@@ -116,6 +143,7 @@
 				const source = (sourceSelect && sourceSelect.value) || "installed";
 				document.querySelectorAll(".source-installed").forEach((el) => (el.hidden = source !== "installed"));
 				document.querySelectorAll(".source-running").forEach((el) => (el.hidden = source !== "running"));
+				document.querySelectorAll(".source-steam").forEach((el) => (el.hidden = source !== "steam"));
 				document.querySelectorAll(".source-browse").forEach((el) => (el.hidden = source !== "browse"));
 
 				const modeSelect = document.querySelector('sdpi-select[setting="closeMode"]');

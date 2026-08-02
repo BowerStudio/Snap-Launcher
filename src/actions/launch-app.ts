@@ -11,7 +11,7 @@ import type { JsonValue } from "@elgato/utils";
 import { getBackend } from "../platform";
 import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
-import { applyAutoTitle, sendInstalledApps, sendRunningApps } from "./pickers";
+import { applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
 
 const logger = streamDeck.logger.createScope("LaunchApp");
 
@@ -78,7 +78,9 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			const result = await getBackend().launch(toConfig(settings));
 
 			if (result.ok) {
-				logger.debug(`ok launched=${result.launched} positioned=${result.positioned} movedDesktop=${result.movedDesktop} pid=${result.pid}`);
+				logger.debug(
+					`ok launched=${result.launched} positioned=${result.positioned} movedDesktop=${result.movedDesktop} pid=${result.pid}`,
+				);
 				await ev.action.showOk();
 			} else {
 				logger.error(`Launch failed: ${result.error}`);
@@ -105,6 +107,8 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			await sendRunningApps();
 		} else if (event === "getInstalledApps") {
 			await sendInstalledApps();
+		} else if (event === "getSteamGames") {
+			await sendSteamGames();
 		} else if (event === "getMonitors") {
 			await this.sendMonitors();
 		} else if (event === "captureWindow") {

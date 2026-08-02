@@ -3,10 +3,22 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import vm from "node:vm";
 
-import { ZONE_HELPERS, buildCaptureScript, buildCloseScript, buildLaunchScript } from "../src/platform/macos/windows.ts";
+import {
+	ZONE_HELPERS,
+	buildCaptureScript,
+	buildCloseScript,
+	buildLaunchScript,
+} from "../src/platform/macos/windows.ts";
 import { parseLastJsonLine } from "../src/platform/macos/osascript.ts";
 import { ACCESSIBILITY_MESSAGE } from "../src/platform/macos/scripts.ts";
-import type { CaptureResult, CloseConfig, CloseResult, LaunchConfig, LaunchResult } from "../src/platform/types.ts";
+import type {
+	CaptureResult,
+	CloseConfig,
+	CloseResult,
+	LaunchConfig,
+	LaunchResult,
+	SteamTarget,
+} from "../src/platform/types.ts";
 
 const launch = (over: Partial<LaunchConfig> = {}): LaunchConfig => ({
 	appPath: "bundle:com.tinyspeck.slackmacgap",
@@ -35,17 +47,36 @@ const close = (over: Partial<CloseConfig> = {}): CloseConfig => ({
 	...over,
 });
 
+const steamGame = (over: Partial<SteamTarget> = {}): SteamTarget => ({
+	appId: "1361210",
+	name: "Warhammer 40,000: Darktide",
+	installDir: "/Users/x/Library/Application Support/Steam/steamapps/common/Darktide",
+	launchUrl: "steam://rungameid/1361210",
+	...over,
+});
+
+const steamLaunch = (over: Partial<LaunchConfig> = {}): LaunchConfig => launch({ appPath: "steam:1361210", ...over });
+
 /* ------------------------------- zone geometry ----------------------------- */
 
 type ZoneRect = { x: number; y: number; width: number; height: number };
-type ZoneCase = { name: string; workArea: { left: number; top: number; width: number; height: number }; zones: Record<string, ZoneRect> };
+type ZoneCase = {
+	name: string;
+	workArea: { left: number; top: number; width: number; height: number };
+	zones: Record<string, ZoneRect>;
+};
 
-const zoneCases: ZoneCase[] = JSON.parse(readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8")).cases;
+const zoneCases: ZoneCase[] = JSON.parse(
+	readFileSync(new URL("./fixtures/zone-cases.json", import.meta.url), "utf8"),
+).cases;
 
 /** The JXA zone math is pure arithmetic, so it runs and is verified here. */
 function jxaZoneRect(left: number, top: number, width: number, height: number, zone: string): ZoneRect {
 	const sandbox = { Math, result: null as unknown };
-	vm.runInNewContext(`${ZONE_HELPERS}\nresult = zoneRect(${left}, ${top}, ${width}, ${height}, ${JSON.stringify(zone)});`, sandbox);
+	vm.runInNewContext(
+		`${ZONE_HELPERS}\nresult = zoneRect(${left}, ${top}, ${width}, ${height}, ${JSON.stringify(zone)});`,
+		sandbox,
+	);
 	return JSON.parse(JSON.stringify(sandbox.result)) as ZoneRect;
 }
 
@@ -82,7 +113,10 @@ type FakeMonitor = { deviceName: string; isPrimary: boolean };
 
 function jxaResolveMonitor(monitors: FakeMonitor[], monitorId: string): FakeMonitor | null {
 	const sandbox = { Math, result: null as unknown, monitors };
-	vm.runInNewContext(`${ZONE_HELPERS}\nresult = resolveTargetMonitor(monitors, ${JSON.stringify(monitorId)});`, sandbox);
+	vm.runInNewContext(
+		`${ZONE_HELPERS}\nresult = resolveTargetMonitor(monitors, ${JSON.stringify(monitorId)});`,
+		sandbox,
+	);
 	return sandbox.result === null ? null : (JSON.parse(JSON.stringify(sandbox.result)) as FakeMonitor);
 }
 
@@ -100,7 +134,11 @@ test("the primary sentinel resolves to the primary display", () => {
 });
 
 test("a disconnected display falls back to the primary", () => {
-	assert.equal(jxaResolveMonitor(displays, "999999")?.deviceName, "69733382", "a missing display must not fail the press");
+	assert.equal(
+		jxaResolveMonitor(displays, "999999")?.deviceName,
+		"69733382",
+		"a missing display must not fail the press",
+	);
 });
 
 test("with no displays at all there is nothing to resolve", () => {
@@ -111,13 +149,23 @@ test("with no displays at all there is nothing to resolve", () => {
 
 const allScripts: [string, string][] = [
 	["launch (zone)", buildLaunchScript(launch())],
-	["launch (custom rect)", buildLaunchScript(launch({ positionMode: "custom", x: 10, y: 20, width: 800, height: 600 }))],
+	[
+		"launch (custom rect)",
+		buildLaunchScript(launch({ positionMode: "custom", x: 10, y: 20, width: 800, height: 600 })),
+	],
 	["launch (no positioning)", buildLaunchScript(launch({ positionMode: "none" }))],
-	["launch (with args and filter)", buildLaunchScript(launch({ launchArgs: "--profile work", titleFilter: "Inbox" }))],
+	[
+		"launch (with args and filter)",
+		buildLaunchScript(launch({ launchArgs: "--profile work", titleFilter: "Inbox" })),
+	],
 	["capture", buildCaptureScript(launch())],
 	["close (graceful)", buildCloseScript(close())],
 	["close (closeThenKill)", buildCloseScript(close({ closeMode: "closeThenKill" }))],
 	["close (kill)", buildCloseScript(close({ closeMode: "kill" }))],
+	["launch (Steam game, zone)", buildLaunchScript(steamLaunch(), steamGame())],
+	["launch (Steam game, no positioning)", buildLaunchScript(steamLaunch({ positionMode: "none" }), steamGame())],
+	["capture (Steam game)", buildCaptureScript(steamLaunch(), steamGame())],
+	["close (Steam game)", buildCloseScript(close({ appPath: "steam:1361210" }), steamGame())],
 ];
 
 for (const [name, script] of allScripts) {
@@ -133,7 +181,10 @@ test("every window-control script gates on Accessibility before touching System 
 		const firstUse = script.indexOf("systemEvents()", script.indexOf("(function () {"));
 		assert.ok(gate > 0, `${name} calls the gate`);
 		if (firstUse !== -1) {
-			assert.ok(script.includes("function systemEvents()"), `${name} reaches System Events only through the helper`);
+			assert.ok(
+				script.includes("function systemEvents()"),
+				`${name} reaches System Events only through the helper`,
+			);
 		}
 	}
 });
@@ -153,6 +204,52 @@ test("launching goes through /usr/bin/open, not an Apple Event", () => {
 	const script = buildLaunchScript(launch());
 	assert.ok(script.includes("runTool('/usr/bin/open'"), "the launcher shells out to open");
 	assert.ok(!script.includes(".activate()"), "the target app's own activate must never be called");
+});
+
+/* -------------------------------- Steam games ------------------------------ */
+
+test("a Steam game is opened by its steam:// URL", () => {
+	const script = buildLaunchScript(steamLaunch(), steamGame());
+	assert.ok(script.includes("STEAM = {"), "the resolved game is embedded");
+	assert.ok(script.includes('"launchUrl":"steam://rungameid/1361210"'));
+	assert.ok(script.includes("runTool('/usr/bin/open', [STEAM.launchUrl])"), "Steam starts the game, not the plugin");
+});
+
+test("an ordinary key carries no Steam target at all", () => {
+	// STEAM is declared null in the prolog; a non-game key must never assign it.
+	for (const script of [buildLaunchScript(launch()), buildCaptureScript(launch()), buildCloseScript(close())]) {
+		assert.ok(script.includes("var STEAM = null;"), "the variable always exists");
+		assert.ok(!script.includes("STEAM = {"), "and is only assigned for a game");
+	}
+});
+
+test("a game that isn't being positioned is not waited for", () => {
+	// Steam's bootstrap, shader compilation and anti-cheat can take minutes; a
+	// key with nothing to do to the window must not fail on that.
+	const script = buildLaunchScript(steamLaunch({ positionMode: "none" }), steamGame());
+	assert.ok(script.includes("if (STEAM && CFG.positionMode === 'none') {"), "the wait is skipped outright");
+
+	const skip = script.indexOf("if (STEAM && CFG.positionMode === 'none') {");
+	const wait = script.indexOf("var deadline = Date.now()");
+	assert.ok(skip !== -1 && wait !== -1 && skip < wait, "and skipped before the wait loop, not after it");
+});
+
+test("a game's windows are recognized by its install directory", () => {
+	const script = buildLaunchScript(steamLaunch(), steamGame());
+	// A game's executable name is the developer's choice, so the install
+	// directory is the only thing that reliably bounds "windows of this game".
+	assert.ok(script.includes("function steamRunningApps("), "matching has its own path");
+	assert.ok(script.includes("appPath.indexOf(prefix) !== 0"), "which is a prefix match on where the files are");
+	assert.ok(script.includes('"installDir":"/Users/x/Library/Application Support/Steam/steamapps/common/Darktide"'));
+});
+
+test("a game with no files reports that, rather than timing out", () => {
+	const script = buildLaunchScript(steamLaunch(), steamGame({ installDir: "" }));
+	assert.ok(script.includes("does not appear to be installed in any Steam library"), "the message names the problem");
+	assert.ok(
+		script.includes("!STEAM.installDir && !CFG.processName"),
+		"unless a process-name override can identify it",
+	);
 });
 
 test("force-quitting uses NSRunningApplication, not the app's quit event", () => {
@@ -227,7 +324,8 @@ test("a permission failure parses into the failure shape", () => {
 });
 
 test("a not-found failure parses into the failure shape", () => {
-	const message = 'Could not find the application for "bundle:com.example.gone". Re-pick the app in the key settings.';
+	const message =
+		'Could not find the application for "bundle:com.example.gone". Re-pick the app in the key settings.';
 	const parsed = parseLastJsonLine<LaunchResult>(JSON.stringify({ ok: false, error: message }));
 	assert.equal(parsed.ok && parsed.value.ok === false && parsed.value.error, message);
 });

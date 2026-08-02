@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { CloseConfig, LaunchConfig } from "../types";
+import type { CloseConfig, LaunchConfig, SteamTarget } from "../types";
 
 // Shared shapes now live in ../types; re-exported so existing importers of this
 // module (including the test suite) keep working unchanged.
@@ -19,6 +19,7 @@ export type {
 	MonitorEntry,
 	PositionMode,
 	RunningApp,
+	SteamTarget,
 } from "../types";
 
 /**
@@ -645,6 +646,13 @@ function Initialize-VDesk {
  * process (e.g. WhatsApp.Root.exe spawns WhatsApp.exe), so without an explicit
  * override they match any window whose owning process lives inside the
  * package's install location.
+ *
+ * Steam games are matched the same way as Store apps, and for the same reason:
+ * the game starts by way of steam.exe, and the exe that ends up owning the
+ * window is named by the developer, not by anything the key knows. Its install
+ * directory, however, is exactly the boundary of "windows belonging to this
+ * game" — launchers, anti-cheat front-ends and the game itself all live inside
+ * it.
  */
 const FIND_WINDOW = `
 function Resolve-TargetExe([string]$p) {
@@ -680,48 +688,76 @@ function Find-TargetWindow([string]$titleFilter, [long[]]$exclude) {
     return [pscustomobject]@{ MainWindowHandle = $w.Handle; Id = $w.ProcessId; MainWindowTitle = $w.Title }
 }
 
-$aumid = Get-TargetAumid $cfg.appPath
-$exePath = $null
-if (-not $aumid) {
-    $exePath = Resolve-TargetExe $cfg.appPath
-    if (Test-PackagedPath $exePath) {
-        $a = Resolve-PathPackage $exePath
-        if ($a) { $aumid = $a.Aumid }
+# Resolving the target runs before each script's own try block, so it carries
+# one of its own: an app that cannot be identified at all must be reported as
+# result JSON rather than escaping as a raw PowerShell error. The failure is
+# recorded rather than acted on, because what it means depends on the caller —
+# a launch cannot proceed, while a close has simply found nothing to close.
+# (try/catch introduces no scope in PowerShell, so everything assigned here is
+# still script-scope below.)
+$resolveError = $null
+try {
+    $aumid = $null
+    $exePath = $null
+    if (-not $steam) {
+        $aumid = Get-TargetAumid $cfg.appPath
+        if (-not $aumid) {
+            $exePath = Resolve-TargetExe $cfg.appPath
+            if (Test-PackagedPath $exePath) {
+                $a = Resolve-PathPackage $exePath
+                if ($a) { $aumid = $a.Aumid }
+            }
+        }
     }
-}
 
-$procName = $cfg.processName
-if ($procName -and $procName.ToLower().EndsWith('.exe')) { $procName = $procName.Substring(0, $procName.Length - 4) }
+    $procName = $cfg.processName
+    if ($procName -and $procName.ToLower().EndsWith('.exe')) { $procName = $procName.Substring(0, $procName.Length - 4) }
 
-$pkgRoot = $null
-if ($aumid) {
-    $pkg = Get-PackageForAumid $aumid
-    if ($pkg -and $pkg.InstallLocation) { $pkgRoot = $pkg.InstallLocation + '\\' }
-    if (-not $procName -and -not $pkgRoot) {
-        throw ('Could not find an installed Store package for "' + $aumid + '". Re-pick the app, or set a Process name override in the key settings.')
+    $pkgRoot = $null
+    if ($steam) {
+        if ($steam.installDir) { $pkgRoot = $steam.installDir.TrimEnd('\\') + '\\' }
+        if (-not $procName -and -not $pkgRoot) {
+            throw ('"' + $steam.name + '" does not appear to be installed in any Steam library. Install it in Steam, or set a Process name override in the key settings.')
+        }
+    } elseif ($aumid) {
+        $pkg = Get-PackageForAumid $aumid
+        if ($pkg -and $pkg.InstallLocation) { $pkgRoot = $pkg.InstallLocation + '\\' }
+        if (-not $procName -and -not $pkgRoot) {
+            throw ('Could not find an installed Store package for "' + $aumid + '". Re-pick the app, or set a Process name override in the key settings.')
+        }
+    } elseif (-not $procName) {
+        $procName = [System.IO.Path]::GetFileNameWithoutExtension($exePath)
+        if (-not $procName) { throw 'Could not determine a process name from the application path.' }
     }
-} elseif (-not $procName) {
-    $procName = [System.IO.Path]::GetFileNameWithoutExtension($exePath)
-    if (-not $procName) { throw 'Could not determine a process name from the application path.' }
-}
 
-$targetDesc = if ($procName) { $procName } else { $aumid }
+    $targetDesc = if ($steam) { $steam.name } elseif ($procName) { $procName } else { $aumid }
+} catch {
+    $resolveError = $_.Exception.Message
+}
 `;
 
-/** Embeds the config as a single-quoted JSON literal ('' escapes quotes). */
-function psConfig(config: LaunchConfig | CloseConfig): string {
-	const json = JSON.stringify(config).replace(/'/g, "''");
-	return "$cfg = ConvertFrom-Json '" + json + "'\n";
+/** Embeds a value as a single-quoted JSON literal ('' escapes quotes). */
+function psJson(value: unknown): string {
+	return "ConvertFrom-Json '" + JSON.stringify(value).replace(/'/g, "''") + "'";
+}
+
+/**
+ * Embeds the config, plus the resolved Steam target when the key launches a
+ * game. $steam is always defined — as $null for an ordinary key — so the
+ * scripts can branch on it without checking whether the variable exists.
+ */
+function psConfig(config: LaunchConfig | CloseConfig, steam?: SteamTarget | null): string {
+	return `$cfg = ${psJson(config)}\n$steam = ${steam ? psJson(steam) : "$null"}\n`;
 }
 
 /**
  * Launches (or focuses) the configured application, waits for its window, then
  * restores + repositions it. Emits exactly one JSON line on stdout.
  */
-export function buildLaunchScript(config: LaunchConfig): string {
+export function buildLaunchScript(config: LaunchConfig, steam?: SteamTarget | null): string {
 	return `
 ${PROLOG}
-${psConfig(config)}
+${psConfig(config, steam)}
 ${NATIVE}
 ${APPX}
 ${ZONE_HELPERS}
@@ -757,6 +793,8 @@ function Get-ZoneTarget($h, $rect) {
 }
 
 try {
+    if ($resolveError) { throw $resolveError }
+
     $target = $null
     $needLaunch = $true
     $movedDesktop = $false
@@ -778,7 +816,11 @@ try {
     if ($needLaunch) {
         $before = @(Get-CandidateWindows | ForEach-Object { $_.Handle.ToInt64() })
 
-        if ($aumid) {
+        if ($steam) {
+            # Handed to Steam as a URL, so the client starts first if it has to
+            # and the game gets its configured launch options.
+            $sp = @{ FilePath = $steam.launchUrl }
+        } elseif ($aumid) {
             # Store apps activate via the shell moniker; a plain exe launch is denied.
             $sp = @{ FilePath = ('shell:AppsFolder\\' + $aumid) }
             if ($cfg.launchArgs) { $sp['ArgumentList'] = $cfg.launchArgs }
@@ -793,6 +835,17 @@ try {
             }
         }
         Start-Process @sp | Out-Null
+
+        # A game can spend minutes in Steam's bootstrap, shader compilation and
+        # anti-cheat checks before it ever shows a window. When the key has
+        # nothing to do with that window, there is nothing to wait for: report
+        # the launch and let the game come up in its own time, rather than
+        # failing the press on a timeout that meant nothing.
+        if ($steam -and $cfg.positionMode -eq 'none' -and -not $cfg.virtualDesktop) {
+            $out = @{ ok = $true; launched = $true; positioned = $false; movedDesktop = $false; pid = 0; title = $steam.name }
+            Write-Output (ConvertTo-Json -InputObject $out -Compress)
+            exit 0
+        }
 
         $deadline = (Get-Date).AddSeconds([Math]::Max(1, [int]$cfg.waitSeconds))
         while ((Get-Date) -lt $deadline) {
@@ -877,15 +930,17 @@ try {
  * Reads the current rectangle of the configured app's window. Refuses while
  * minimized (the rect would be meaningless); flags maximized captures.
  */
-export function buildCaptureScript(config: LaunchConfig): string {
+export function buildCaptureScript(config: LaunchConfig, steam?: SteamTarget | null): string {
 	return `
 ${PROLOG}
-${psConfig(config)}
+${psConfig(config, steam)}
 ${NATIVE}
 ${APPX}
 ${FIND_WINDOW}
 
 try {
+    if ($resolveError) { throw $resolveError }
+
     $target = Find-TargetWindow $cfg.titleFilter @()
     if (-not $target) {
         throw ('"' + $targetDesc + '" does not appear to be running with a visible window. Start it, arrange the window, then capture.')
@@ -973,10 +1028,10 @@ try {
  * is the same FIND_WINDOW logic the launcher uses. Finding nothing to close
  * is success, not an error — the action is idempotent.
  */
-export function buildCloseScript(config: CloseConfig): string {
+export function buildCloseScript(config: CloseConfig, steam?: SteamTarget | null): string {
 	return `
 ${PROLOG}
-${psConfig(config)}
+${psConfig(config, steam)}
 ${NATIVE}
 ${APPX}
 ${FIND_WINDOW}
@@ -991,6 +1046,14 @@ function Get-MatchingWindows {
 }
 
 try {
+    if ($resolveError) {
+        # An app that cannot be identified — an uninstalled Store package or
+        # Steam game — has nothing running to close, which is this action's
+        # definition of success.
+        Write-Output (ConvertTo-Json -InputObject @{ ok = $true; found = 0; closed = 0; killed = 0 } -Compress)
+        exit 0
+    }
+
     $wins = Get-MatchingWindows
     $found = $wins.Count
     $closed = 0
@@ -1100,6 +1163,38 @@ try {
 }
 
 /**
+ * Finds where Steam is installed, which is the one part of Steam discovery that
+ * isn't just reading files: the client records its own location in the
+ * registry, and a user is free to install it anywhere. HKCU is written by the
+ * running client and is the more current of the two; the WOW6432Node key is the
+ * installer's and covers a machine where the client has never been started.
+ *
+ * Absent keys are not an error — a machine without Steam simply reports no
+ * path, and the caller falls back to the default install locations.
+ */
+export function buildSteamPathScript(): string {
+	return `
+${PROLOG}
+try {
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($k in @(
+        @{ Path = 'HKCU:\\Software\\Valve\\Steam'; Name = 'SteamPath' },
+        @{ Path = 'HKLM:\\SOFTWARE\\WOW6432Node\\Valve\\Steam'; Name = 'InstallPath' },
+        @{ Path = 'HKLM:\\SOFTWARE\\Valve\\Steam'; Name = 'InstallPath' }
+    )) {
+        try {
+            $v = (Get-ItemProperty -LiteralPath $k.Path -Name $k.Name -ErrorAction Stop).$($k.Name)
+            if ($v) { $paths.Add([string]$v) }
+        } catch { }
+    }
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $true; paths = $paths.ToArray() } -Compress)
+} catch {
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
+}
+`;
+}
+
+/**
  * Lists connected monitors with bounds and work areas (physical pixels,
  * virtual-desktop coordinates). Used by the Property Inspector's Monitor
  * dropdown.
@@ -1148,7 +1243,11 @@ export function runPowerShell<T>(script: string, timeoutMs: number): Promise<T> 
 		// Prepend a UTF-8 BOM: PS 5.1 assumes ANSI for BOM-less files.
 		writeFileSync(scriptFile, String.fromCharCode(0xfeff) + script, "utf8");
 	} catch (e) {
-		return Promise.reject(new Error(`Could not write the PowerShell script to a temp file: ${e instanceof Error ? e.message : String(e)}`));
+		return Promise.reject(
+			new Error(
+				`Could not write the PowerShell script to a temp file: ${e instanceof Error ? e.message : String(e)}`,
+			),
+		);
 	}
 
 	return new Promise<T>((resolve, reject) => {
@@ -1183,7 +1282,12 @@ export function runPowerShell<T>(script: string, timeoutMs: number): Promise<T> 
 				if (error) {
 					reject(new Error((stderr ?? "").toString().trim() || error.message));
 				} else {
-					reject(new Error("PowerShell produced no parsable output." + (lines.length ? " Last line: " + lines[lines.length - 1].slice(0, 300) : "")));
+					reject(
+						new Error(
+							"PowerShell produced no parsable output." +
+								(lines.length ? " Last line: " + lines[lines.length - 1].slice(0, 300) : ""),
+						),
+					);
 				}
 			},
 		);

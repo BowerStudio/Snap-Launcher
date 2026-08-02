@@ -34,6 +34,7 @@ test("an unsupported platform yields a stub that names the platform", async () =
 		() => backend.close({} as never),
 		() => backend.listRunningApps(),
 		() => backend.listInstalledApps(),
+		() => backend.listSteamGames(),
 		() => backend.listMonitors(),
 	];
 
@@ -44,8 +45,20 @@ test("an unsupported platform yields a stub that names the platform", async () =
 
 test("every backend exposes the whole operation set", () => {
 	for (const backend of [windowsBackend, macosBackend, selectBackend("linux")]) {
-		for (const op of ["launch", "capture", "close", "listRunningApps", "listInstalledApps", "listMonitors"]) {
-			assert.equal(typeof (backend as unknown as Record<string, unknown>)[op], "function", `${backend.platform}.${op}`);
+		for (const op of [
+			"launch",
+			"capture",
+			"close",
+			"listRunningApps",
+			"listInstalledApps",
+			"listSteamGames",
+			"listMonitors",
+		]) {
+			assert.equal(
+				typeof (backend as unknown as Record<string, unknown>)[op],
+				"function",
+				`${backend.platform}.${op}`,
+			);
 		}
 		assert.equal(typeof backend.features.virtualDesktop, "boolean", `${backend.platform}.features`);
 	}

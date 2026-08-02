@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { layoutMonitors, zoneFromPoint, zoneRect } from "../com.bowerstudio.snap-launcher.sdPlugin/ui/position-picker.js";
+import {
+	layoutMonitors,
+	zoneFromPoint,
+	zoneRect,
+} from "../com.bowerstudio.snap-launcher.sdPlugin/ui/position-picker.js";
 
 test("zoneFromPoint maps centre, edges, and corners", () => {
 	assert.equal(zoneFromPoint(0.5, 0.5), "full");
@@ -29,7 +33,16 @@ test("zoneRect returns percentage rects and falls back to full", () => {
 	assert.deepEqual(zoneRect("nonsense"), zoneRect("full"));
 });
 
-const M = (over) => ({ value: "\\\\.\\DISPLAY1", label: "m", left: 0, top: 0, width: 1600, height: 900, isPrimary: false, ...over });
+const M = (over) => ({
+	value: "\\\\.\\DISPLAY1",
+	label: "m",
+	left: 0,
+	top: 0,
+	width: 1600,
+	height: 900,
+	isPrimary: false,
+	...over,
+});
 
 test("layoutMonitors returns empty box for no monitors", () => {
 	assert.deepEqual(layoutMonitors([]), { boxWidth: 0, boxHeight: 0, monitors: [] });
@@ -43,14 +56,23 @@ test("layoutMonitors scales two side-by-side monitors to fit", () => {
 	);
 	assert.equal(r.boxWidth, 320);
 	assert.equal(r.boxHeight, 90);
-	assert.deepEqual({ x: r.monitors[0].x, y: r.monitors[0].y, w: r.monitors[0].w, h: r.monitors[0].h }, { x: 0, y: 0, w: 160, h: 90 });
-	assert.deepEqual({ x: r.monitors[1].x, y: r.monitors[1].y, w: r.monitors[1].w, h: r.monitors[1].h }, { x: 160, y: 0, w: 160, h: 90 });
+	assert.deepEqual(
+		{ x: r.monitors[0].x, y: r.monitors[0].y, w: r.monitors[0].w, h: r.monitors[0].h },
+		{ x: 0, y: 0, w: 160, h: 90 },
+	);
+	assert.deepEqual(
+		{ x: r.monitors[1].x, y: r.monitors[1].y, w: r.monitors[1].w, h: r.monitors[1].h },
+		{ x: 160, y: 0, w: 160, h: 90 },
+	);
 	assert.equal(r.monitors[0].isPrimary, true);
 });
 
 test("layoutMonitors keeps a negative-left monitor on the left and fits the box", () => {
 	const r = layoutMonitors(
-		[M({ value: "\\\\.\\DISPLAY1", left: -1280, width: 1280, height: 1024 }), M({ value: "\\\\.\\DISPLAY2", left: 0, width: 1920, height: 1080, isPrimary: true })],
+		[
+			M({ value: "\\\\.\\DISPLAY1", left: -1280, width: 1280, height: 1024 }),
+			M({ value: "\\\\.\\DISPLAY2", left: 0, width: 1920, height: 1080, isPrimary: true }),
+		],
 		320,
 		180,
 	);
@@ -72,7 +94,10 @@ test("module imports in Node without touching the DOM, and exposes init", async 
 });
 
 test("layoutMonitors carries the arrangement index through for labelling", () => {
-	const r = layoutMonitors([M({ value: "69733382", index: 1, isPrimary: true }), M({ value: "724043442", index: 2 })]);
+	const r = layoutMonitors([
+		M({ value: "69733382", index: 1, isPrimary: true }),
+		M({ value: "724043442", index: 2 }),
+	]);
 	assert.deepEqual(
 		r.monitors.map((m) => m.index),
 		[1, 2],

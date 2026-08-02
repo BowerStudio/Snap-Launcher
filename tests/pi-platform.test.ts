@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { applyPlatform, getPlatform, platformFromConnection } from "../com.bowerstudio.snap-launcher.sdPlugin/ui/platform.js";
+import {
+	applyPlatform,
+	getPlatform,
+	platformFromConnection,
+} from "../com.bowerstudio.snap-launcher.sdPlugin/ui/platform.js";
 
 /* ------------------------------- DOM test double --------------------------- */
 
@@ -139,7 +143,14 @@ test("a bare registration payload is accepted too", () => {
 });
 
 test("an unrecognised payload yields no platform rather than a guess", () => {
-	for (const payload of [null, undefined, {}, { info: {} }, { application: {} }, { info: { application: { platform: "linux" } } }]) {
+	for (const payload of [
+		null,
+		undefined,
+		{},
+		{ info: {} },
+		{ application: {} },
+		{ info: { application: { platform: "linux" } } },
+	]) {
 		assert.equal(platformFromConnection(payload), null);
 	}
 });

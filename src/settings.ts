@@ -6,7 +6,7 @@ import type { CloseConfig, CloseMode, LaunchConfig, PositionMode } from "./platf
  */
 export type LaunchSettings = {
 	appPath?: string;
-	/** Which app picker the PI shows (installed | running | browse). Cosmetic only. */
+	/** Which app picker the PI shows (installed | running | steam | browse). Cosmetic only. */
 	appSource?: string;
 	launchArgs?: string;
 	titleFilter?: string;
@@ -36,7 +36,7 @@ export type LaunchSettings = {
  */
 export type CloseSettings = {
 	appPath?: string;
-	/** Which app picker the PI shows (installed | running | browse). Cosmetic only. */
+	/** Which app picker the PI shows (installed | running | steam | browse). Cosmetic only. */
 	appSource?: string;
 	titleFilter?: string;
 	processName?: string;
@@ -51,7 +51,17 @@ export type CloseSettings = {
 	autoTitle?: string;
 };
 
-export const ZONES: readonly string[] = ["full", "left", "right", "top", "bottom", "topLeft", "topRight", "bottomLeft", "bottomRight"];
+export const ZONES: readonly string[] = [
+	"full",
+	"left",
+	"right",
+	"top",
+	"bottom",
+	"topLeft",
+	"topRight",
+	"bottomLeft",
+	"bottomRight",
+];
 
 /** Coerces a possibly-string numeric setting; falls back when blank/invalid. */
 function num(v: number | string | undefined, fallback: number): number {

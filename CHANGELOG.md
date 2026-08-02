@@ -4,6 +4,38 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Steam games.** A new **Steam games** source in the **Choose from** picker lists every game
+  installed in your Steam libraries — all library folders, not just the one Steam lives in —
+  on both Windows and macOS. It works on _Launch & Position_ and _Close App_ keys alike.
+    - Pressing the key launches the game **through Steam**, exactly like clicking Play: the
+      client starts first if it isn't running, and the game's own launch options, cloud saves,
+      controller config, and overlay all apply. Anything in **Arguments** is passed on top of
+      them. Pointing a key at a game's `.exe` does none of that, and some games refuse to run
+      that way at all.
+    - A key stores the game's **Steam app id**, so it keeps working when the game is updated,
+      verified, or moved to another library folder or drive. A game that has been uninstalled
+      is reported by name rather than failing obscurely.
+    - **Windows are matched by the game's install folder**, since a game's executable name is
+      the developer's choice and can change with an update — the same approach already used for
+      Microsoft Store apps and their package location. Snap zones, captured rectangles, virtual
+      desktops, and closing or force-quitting all work on a game as they do on any other app.
+    - **A game that isn't being positioned is no longer waited for.** Games can spend minutes in
+      Steam's bootstrap, shader compilation, and anti-cheat checks; with **Positioning** set to
+      _Don't move the window_ the key reports success as soon as Steam has been handed the game,
+      instead of failing on a timeout that meant nothing.
+
+### Fixed
+
+- An app that could not be identified at all — a Microsoft Store package that is no longer
+  installed, and now an uninstalled Steam game — reported a raw PowerShell error including
+  script paths and stack noise. It is now the same one-line message every other failure gets.
+  A **Close App** key in that situation now reports "nothing to close", which is what the
+  action means everywhere else, rather than an error.
+
 ## [1.2.0] — 2026-08-01
 
 ### Added
@@ -12,19 +44,19 @@ to follow [Semantic Versioning](https://semver.org/).
   cross-platform plugin. Both actions work the same way on either OS: launch or focus an app,
   snap its window to a zone or a captured rectangle across multiple displays, and close or
   force-quit it.
-  - Apps are picked from `/Applications`, `/System/Applications`, and `~/Applications`
-    (including one level of subfolders), or from anything with an open window, or by browsing
-    for an `.app` bundle. Keys remember an app by its **bundle identifier**, so they keep
-    working after the app is updated, renamed, or moved.
-  - Displays are enumerated with their true arrangement, including displays placed above or
-    to the left of the primary. Work areas exclude the menu bar and Dock, so a full-screen
-    zone never covers either — including when the Dock auto-hides or is moved.
-  - **Accessibility permission is required** to control windows. When it hasn't been granted,
-    keys report exactly which permission is missing and where to grant it, instead of a raw
-    scripting error. Granting it takes effect on the next key press, with no restart.
-  - You are never asked to approve individual applications: apps are launched with `open` and
-    their windows driven through System Events, so macOS asks once rather than
-    "Stream Deck wants to control …" for every app you configure.
+    - Apps are picked from `/Applications`, `/System/Applications`, and `~/Applications`
+      (including one level of subfolders), or from anything with an open window, or by browsing
+      for an `.app` bundle. Keys remember an app by its **bundle identifier**, so they keep
+      working after the app is updated, renamed, or moved.
+    - Displays are enumerated with their true arrangement, including displays placed above or
+      to the left of the primary. Work areas exclude the menu bar and Dock, so a full-screen
+      zone never covers either — including when the Dock auto-hides or is moved.
+    - **Accessibility permission is required** to control windows. When it hasn't been granted,
+      keys report exactly which permission is missing and where to grant it, instead of a raw
+      scripting error. Granting it takes effect on the next key press, with no restart.
+    - You are never asked to approve individual applications: apps are launched with `open` and
+      their windows driven through System Events, so macOS asks once rather than
+      "Stream Deck wants to control …" for every app you configure.
 
 ### Changed
 
@@ -45,15 +77,15 @@ to follow [Semantic Versioning](https://semver.org/).
 
 - **Visual window-position picker.** On a _Launch & Position_ key, the **Window position**
   section's _Monitor & snap zone_ mode is now point-and-click instead of two dropdowns:
-  - A **to-scale map of your monitors**, arranged just like your real desktop — click the
-    display you want the window on. Portrait monitors, and displays placed to the left of or
-    above the primary, are drawn in their true relative positions.
-  - A **Display dropdown** that stays in sync with the map, so you can pick either way.
-  - A **picture of the screen you aim at** to choose the zone: hover an **edge** for a half,
-    a **corner** for a quarter, or the **centre** for full screen, then click. A live preview
-    follows the cursor, and the saved zone stays highlighted.
+    - A **to-scale map of your monitors**, arranged just like your real desktop — click the
+      display you want the window on. Portrait monitors, and displays placed to the left of or
+      above the primary, are drawn in their true relative positions.
+    - A **Display dropdown** that stays in sync with the map, so you can pick either way.
+    - A **picture of the screen you aim at** to choose the zone: hover an **edge** for a half,
+      a **corner** for a quarter, or the **centre** for full screen, then click. A live preview
+      follows the cursor, and the saved zone stays highlighted.
 
-  No more mapping "Top-right quarter" in your head — you see exactly where the window will go.
+    No more mapping "Top-right quarter" in your head — you see exactly where the window will go.
 
 ### Unchanged
 

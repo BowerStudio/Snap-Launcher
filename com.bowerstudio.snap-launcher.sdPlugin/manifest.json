@@ -34,9 +34,7 @@
 			"Icon": "imgs/actions/launch/icon",
 			"Tooltip": "Launch or focus an app and move its window to a saved position.",
 			"PropertyInspectorPath": "ui/launch.html",
-			"Controllers": [
-				"Keypad"
-			],
+			"Controllers": ["Keypad"],
 			"States": [
 				{
 					"Image": "imgs/actions/launch/key",
@@ -50,9 +48,7 @@
 			"Icon": "imgs/actions/close/icon",
 			"Tooltip": "Close an app's windows — optionally force-quit if it doesn't exit.",
 			"PropertyInspectorPath": "ui/close.html",
-			"Controllers": [
-				"Keypad"
-			],
+			"Controllers": ["Keypad"],
 			"States": [
 				{
 					"Image": "imgs/actions/close/key",
