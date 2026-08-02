@@ -1,4 +1,4 @@
-import type { CloseConfig, LaunchConfig } from "../types";
+import type { CloseConfig, LaunchConfig, SteamTarget } from "../types";
 
 /**
  * The message shown whenever Accessibility has not been granted. It names the
@@ -20,9 +20,14 @@ export function jsLiteral(value: unknown): string {
 	return JSON.stringify(value).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
 
-/** Embeds the config the way psConfig does for PowerShell. */
-export function jsConfig(config: LaunchConfig | CloseConfig): string {
-	return `var CFG = ${jsLiteral(config)};\n`;
+/**
+ * Embeds the config the way psConfig does for PowerShell, plus the resolved
+ * Steam target when the key launches a game. STEAM is declared null in the
+ * prolog, so helpers can branch on it whether or not a config was embedded.
+ */
+export function jsConfig(config: LaunchConfig | CloseConfig, steam?: SteamTarget | null): string {
+	const target = steam ? `STEAM = ${jsLiteral(steam)};\n` : "";
+	return `var CFG = ${jsLiteral(config)};\n${target}`;
 }
 
 /**
@@ -43,6 +48,13 @@ export const PROLOG = `
 ObjC.import('AppKit');
 ObjC.import('ApplicationServices');
 ObjC.import('CoreGraphics');
+
+/**
+ * The resolved Steam game when the key launches one, otherwise null. Declared
+ * here rather than by jsConfig so that every script — including the ones with
+ * no config at all — can test it without a typeof guard.
+ */
+var STEAM = null;
 
 /** Fails the whole script; the top-level catch turns this into the error JSON. */
 function fail(message) {

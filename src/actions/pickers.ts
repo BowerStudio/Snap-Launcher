@@ -2,7 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import type { DidReceiveSettingsEvent } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 
-import { getBackend, type RunningApp } from "../platform";
+import { getBackend, type InstalledApp, type RunningApp } from "../platform";
 
 const logger = streamDeck.logger.createScope("Pickers");
 
@@ -49,10 +49,24 @@ export async function sendRunningApps(): Promise<void> {
 
 /** Populates an "Installed apps" dropdown (sdpi-select datasource). */
 export async function sendInstalledApps(): Promise<void> {
+	await sendAppList("getInstalledApps", () => getBackend().listInstalledApps(), "installed apps");
+}
+
+/** Populates a "Steam games" dropdown (sdpi-select datasource). */
+export async function sendSteamGames(): Promise<void> {
+	await sendAppList("getSteamGames", () => getBackend().listSteamGames(), "Steam games");
+}
+
+/**
+ * Sends one name/value list to the Property Inspector. A scan that fails sends
+ * an empty list rather than nothing at all, so the dropdown settles on its
+ * placeholder instead of spinning on "Loading…" forever.
+ */
+async function sendAppList(event: string, scan: () => Promise<InstalledApp[]>, what: string): Promise<void> {
 	let items: { label: string; value: string }[] = [];
 
 	try {
-		const apps = await getBackend().listInstalledApps();
+		const apps = await scan();
 		if (Array.isArray(apps)) {
 			items = apps
 				.filter((a) => typeof a.path === "string" && a.path.length > 0 && typeof a.name === "string" && a.name.length > 0)
@@ -62,10 +76,10 @@ export async function sendInstalledApps(): Promise<void> {
 				});
 		}
 	} catch (e) {
-		logger.error(`Failed to list installed apps: ${e instanceof Error ? e.message : String(e)}`);
+		logger.error(`Failed to list ${what}: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
-	await streamDeck.ui.sendToPropertyInspector({ event: "getInstalledApps", items });
+	await streamDeck.ui.sendToPropertyInspector({ event, items });
 }
 
 type TitledSettings = JsonObject & { appPath?: string; titledFor?: string; autoTitle?: string };
@@ -102,12 +116,13 @@ export function truncate(text: string, max: number): string {
  * (e.g. chosen via the file browser): the file name without its extension.
  *
  * Identity-style values carry no readable name and yield nothing: a Windows
- * Store AUMID, and a macOS "bundle:com.tinyspeck.slackmacgap" — the trailing
- * component of a bundle id is not a name anyone would recognise on a key.
+ * Store AUMID, a macOS "bundle:com.tinyspeck.slackmacgap", and a "steam:1361210"
+ * — the trailing component of a bundle id, or a Steam app id, is not a name
+ * anyone would recognise on a key.
  */
 export function friendlyName(appPath: string): string {
 	const lower = appPath.toLowerCase();
-	if (lower.startsWith("shell:appsfolder\\") || appPath.includes("!") || lower.startsWith("bundle:")) {
+	if (lower.startsWith("shell:appsfolder\\") || appPath.includes("!") || lower.startsWith("bundle:") || lower.startsWith("steam:")) {
 		return "";
 	}
 	const base = appPath.split(/[\\/]/).pop() ?? "";

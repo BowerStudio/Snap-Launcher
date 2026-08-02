@@ -4,6 +4,38 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Steam games.** A new **Steam games** source in the **Choose from** picker lists every game
+  installed in your Steam libraries — all library folders, not just the one Steam lives in —
+  on both Windows and macOS. It works on _Launch & Position_ and _Close App_ keys alike.
+  - Pressing the key launches the game **through Steam**, exactly like clicking Play: the
+    client starts first if it isn't running, and the game's own launch options, cloud saves,
+    controller config, and overlay all apply. Anything in **Arguments** is passed on top of
+    them. Pointing a key at a game's `.exe` does none of that, and some games refuse to run
+    that way at all.
+  - A key stores the game's **Steam app id**, so it keeps working when the game is updated,
+    verified, or moved to another library folder or drive. A game that has been uninstalled
+    is reported by name rather than failing obscurely.
+  - **Windows are matched by the game's install folder**, since a game's executable name is
+    the developer's choice and can change with an update — the same approach already used for
+    Microsoft Store apps and their package location. Snap zones, captured rectangles, virtual
+    desktops, and closing or force-quitting all work on a game as they do on any other app.
+  - **A game that isn't being positioned is no longer waited for.** Games can spend minutes in
+    Steam's bootstrap, shader compilation, and anti-cheat checks; with **Positioning** set to
+    _Don't move the window_ the key reports success as soon as Steam has been handed the game,
+    instead of failing on a timeout that meant nothing.
+
+### Fixed
+
+- An app that could not be identified at all — a Microsoft Store package that is no longer
+  installed, and now an uninstalled Steam game — reported a raw PowerShell error including
+  script paths and stack noise. It is now the same one-line message every other failure gets.
+  A **Close App** key in that situation now reports "nothing to close", which is what the
+  action means everywhere else, rather than an error.
+
 ## [1.2.0] — 2026-08-01
 
 ### Added

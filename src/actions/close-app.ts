@@ -10,7 +10,7 @@ import type { JsonValue } from "@elgato/utils";
 
 import { getBackend } from "../platform";
 import { toCloseConfig, type CloseSettings } from "../settings";
-import { applyAutoTitle, sendInstalledApps, sendRunningApps } from "./pickers";
+import { applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
 
 const logger = streamDeck.logger.createScope("CloseApp");
 
@@ -104,6 +104,8 @@ export class CloseApp extends SingletonAction<CloseSettings> {
 			await sendRunningApps();
 		} else if (event === "getInstalledApps") {
 			await sendInstalledApps();
+		} else if (event === "getSteamGames") {
+			await sendSteamGames();
 		}
 	}
 

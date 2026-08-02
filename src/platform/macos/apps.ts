@@ -80,8 +80,56 @@ function resolveBundlePath(identity) {
     return null;
 }
 
+/** Where a running app lives on disk: its bundle, or its bare executable. */
+function runningAppPath(app) {
+    var bundleUrl = app.bundleURL;
+    if (bundleUrl && !bundleUrl.isNil()) return ObjC.unwrap(bundleUrl.path);
+    var exeUrl = app.executableURL;
+    if (exeUrl && !exeUrl.isNil()) return ObjC.unwrap(exeUrl.path);
+    return null;
+}
+
+/**
+ * Running processes belonging to a Steam game.
+ *
+ * A game's bundle identifier is whatever its developer chose and is not
+ * recorded anywhere Snap Launcher can read, so the game is recognized by its
+ * files instead: everything Steam installed for it — the game, its launcher,
+ * its anti-cheat front-end — lives under one install directory.
+ *
+ * With no install directory (the game isn't installed) nothing can be matched
+ * by path, and only an explicit Process name override can identify it; without
+ * even that, matching nothing is the correct answer rather than a guess.
+ */
+function steamRunningApps(processNameOverride) {
+    var root = STEAM.installDir;
+    if (!root && !processNameOverride) return [];
+    var prefix = root && root.charAt(root.length - 1) !== '/' ? root + '/' : root;
+
+    var matches = [];
+    var running = WORKSPACE.runningApplications;
+    var count = Number(running.count);
+    for (var i = 0; i < count; i++) {
+        var app = running.objectAtIndex(i);
+        if (root) {
+            // Anything under the install directory — or the directory itself,
+            // for a game whose install folder is the .app bundle.
+            var appPath = runningAppPath(app);
+            if (!appPath || (appPath !== root && appPath.indexOf(prefix) !== 0)) continue;
+        } else if (Number(app.activationPolicy) !== 0) {
+            // Override-only matching: narrowed by name further down, so keep
+            // this to apps that can own a window at all.
+            continue;
+        }
+        matches.push(app);
+    }
+    return matches;
+}
+
 /** Running apps matching a stored identity, newest activation order first. */
-function runningAppsFor(identity, bundlePath) {
+function runningAppsFor(identity, bundlePath, processNameOverride) {
+    if (STEAM) return steamRunningApps(processNameOverride);
+
     var parsed = parseIdentity(identity);
     var bundleId = parsed.bundleId;
     if (!bundleId && bundlePath) bundleId = bundleIdForPath(bundlePath);

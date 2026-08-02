@@ -6,6 +6,7 @@ Runs on **Windows 10+ and macOS 13+**.
 
 - On Windows it works with classic desktop apps (`.exe`/`.lnk`) **and Microsoft Store apps** (WhatsApp, Spotify, Settings, …), driving Windows PowerShell 5.1 and the Win32 window APIs (`SetWindowPos`, `GetWindowRect`, `EnumDisplayMonitors`).
 - On macOS it works with any `.app` bundle, driving `osascript` (JXA), System Events, and AppKit. **It needs Accessibility permission** — see [macOS setup](#macos-setup).
+- On both, it works with **Steam games** — picked from your Steam libraries and launched through Steam itself. See [Steam games](#steam-games).
 
 Two platform differences worth knowing up front:
 
@@ -53,15 +54,36 @@ The settings panel is organised into four sections:
 
 ## Choosing the application
 
-The **Choose from** selector switches between three ways of picking an app. All three set the same thing (the **Selected app** line always shows what's currently chosen — whichever picker you used last wins):
+The **Choose from** selector switches between four ways of picking an app. All four set the same thing (the **Selected app** line always shows what's currently chosen — whichever picker you used last wins):
 
 - **Running apps** — every app that currently has a visible window. Start the app, click the refresh icon, pick it from the list. Works for everything, including Store apps on Windows.
 - **Installed apps** — everything installed on the machine, no need to start the app first. On Windows that's Start Menu programs plus Microsoft Store apps; on macOS it's `/Applications`, `/System/Applications`, and `~/Applications` (including one level of subfolders like Utilities). Click the refresh icon after installing something new.
+- **Steam games** — every game installed in your Steam libraries. See [Steam games](#steam-games).
 - **Browse for a file** — point straight at an `.exe`, `.lnk`, `.bat`, or `.cmd` on Windows, or an `.app` bundle on macOS.
 
 Picking an app also sets the key's title to the app's name (e.g. "WhatsApp"). Anything you type in Stream Deck's own **Title** field always takes precedence.
 
 On macOS an app is remembered by its **bundle identifier** wherever possible, so a key keeps working after the app is updated, renamed, or moved between `/Applications` and `~/Applications`.
+
+## Steam games
+
+Choose **Steam games** in the **Choose from** selector and the dropdown lists every game installed in your Steam libraries — every library folder, not just the one Steam itself lives in. Pick one and the key is done; there's nothing to browse for and no executable to find.
+
+Pressing the key **launches the game through Steam**, exactly like clicking Play:
+
+- Steam starts first if it isn't already running.
+- The game's own **launch options**, cloud saves, controller config, and overlay all apply — none of which happens if you point a key at the game's `.exe` directly, and which some games refuse to start without.
+- Anything you type in **Arguments** is passed to the game on top of its Steam launch options.
+
+Positioning, virtual desktops, and the **Close App** action all work on a game like they do on any other app:
+
+- **Windows are matched by the game's install folder**, because a game's executable name is the developer's choice and can change with an update. Everything Steam installed for the game — the game itself, a launcher, an anti-cheat front-end — lives under that folder, so that's the boundary used. The **Process name** override still works if you need to pin down one executable exactly.
+- **A game you aren't positioning is never waited for.** Games can spend minutes in Steam's bootstrap, shader compilation, and anti-cheat checks. With **Positioning** set to *Don't move the window*, the key hands the game to Steam and reports success immediately rather than failing on a timeout. Set a zone or a captured rectangle and the key does wait — raise **Wait (seconds)** well above the default 10 for a game.
+- **Fullscreen games can't be repositioned.** That's the game's own display mode, not a plugin limitation — switch the game to windowed or borderless if you want a key to snap it.
+
+A key stores the game's **Steam app id**, so it keeps working when the game is updated, verified, or moved to another library folder or drive. If the game is uninstalled, the key says so by name instead of failing obscurely.
+
+Games installed by other launchers, and *non-Steam shortcuts* you've added to your Steam library, aren't listed — point a key at those with **Installed apps** or **Browse for a file**.
 
 ## Virtual desktops (Windows 11 only)
 
@@ -112,11 +134,11 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 
 | Setting | Section | What it does |
 | --- | --- | --- |
-| Choose from | Application | Which picker is shown: **Running apps**, **Installed apps**, or **Browse for a file**. All three set the same app. |
-| Running / Installed apps / App path | Application | The app to launch. The **Selected app** line below always shows the current choice. |
-| Arguments | Application | Optional command-line arguments passed on launch. |
+| Choose from | Application | Which picker is shown: **Running apps**, **Installed apps**, **Steam games**, or **Browse for a file**. All four set the same app. |
+| Running / Installed apps / Steam games / App path | Application | The app to launch. The **Selected app** line below always shows the current choice. |
+| Arguments | Application | Optional command-line arguments passed on launch. For a Steam game they're passed on top of its Steam launch options. |
 | If already running | Launch | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance. |
-| Wait (seconds) | Launch | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. |
+| Wait (seconds) | Launch | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. Unused for a Steam game that isn't being positioned, which is never waited for. |
 | Desktop name | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS. |
 | Positioning | Window position | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode. |
 | Monitor / Zone | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display. |
@@ -136,6 +158,13 @@ Keys configured with an older version of the plugin keep working unchanged — t
 ## How it works
 
 Both platforms follow the same shape: each key press runs **one** short-lived script (PowerShell on Windows, `osascript`/JXA on macOS) that does the whole job and prints a single line of JSON. Nothing stays resident, and the actions themselves are platform-agnostic — they talk to a backend interface, not to an OS.
+
+### Steam games (both platforms)
+
+- **Discovery is Steam's own metadata, read directly.** `steamapps/libraryfolders.vdf` lists every library folder, and each game's `appmanifest_<appid>.acf` gives its name and install folder. That's plain file reading, so it's one implementation shared by both platforms rather than two — the only platform-specific part is where Steam itself is (the registry on Windows, `~/Library/Application Support/Steam` on macOS). Runtimes that are installed like games (Steamworks redistributables, Proton, the Linux runtimes) are filtered out, and a game whose files aren't on disk isn't offered.
+- **A key stores `steam:<appid>`** — the same opaque-identity approach used for Store apps and macOS bundle ids. It's resolved against the local Steam installation on every press, so a game that moves library folders is simply found in its new one.
+- **Launching goes through `steam://rungameid/<appid>`**, the same URL Steam's own desktop shortcuts use, so the client is started first when needed and the game's launch options apply.
+- **Window matching is by install directory**, the same mechanism Store apps use for their package location, and for the same reason: the process that ends up owning the window isn't knowable in advance.
 
 ### On macOS
 
@@ -159,9 +188,15 @@ StreamDeckWindowResize\
 ├── src\                                  TypeScript plugin source
 │   ├── plugin.ts                         entry point, registers the actions
 │   ├── settings.ts                       key settings types + normalization/migration
-│   ├── powershell.ts                     PowerShell script builders + runner
+│   ├── monitors.ts                       monitor list -> Property Inspector items
+│   ├── platform\                         the OS backends behind one interface
+│   │   ├── types.ts / backend.ts         shared shapes + the backend contract
+│   │   ├── index.ts                      picks the backend for the running OS
+│   │   ├── steam.ts                      Steam library discovery (shared by both)
+│   │   ├── windows\                      PowerShell script builders + runner
+│   │   └── macos\                        osascript (JXA) script builders + runner
 │   └── actions\                          launch-app.ts, close-app.ts, pickers.ts (shared PI dropdowns)
-├── tests\                                node:test suite (zone math, monitors, settings)
+├── tests\                                node:test suite (zone math, monitors, settings, Steam)
 ├── com.bowerstudio.snap-launcher.sdPlugin\   the plugin bundle Stream Deck loads
 │   ├── manifest.json                     plugin metadata (name, version, UUID)
 │   ├── ui\launch.html                    Property Inspector (key settings UI)
@@ -238,9 +273,17 @@ Before publishing:
    - `src/actions/launch-app.ts` → the `@action({ UUID: … })` decorator
    - the `.sdPlugin` folder name, `rollup.config.mjs` → `sdPlugin` constant, and the `streamdeck restart` name in `package.json`
 3. Set `Nodejs.Debug` to `"disabled"` in `manifest.json` and lower the log level in `src/plugin.ts` (it's `debug` for development).
-4. Test on a real device — at minimum the key press (launch, focus, reposition) for a zone key and a custom key, plus the Capture button, for both a classic app and a Store app.
+4. Test on a real device — at minimum the key press (launch, focus, reposition) for a zone key and a custom key, plus the Capture button, for a classic app, a Store app, and a Steam game (both with and without positioning).
 
 ## Troubleshooting
+
+### Steam games
+
+- **The Steam games list is empty**: Steam isn't installed where the plugin looks, or no games are fully installed. Click the refresh icon after installing a game. On Windows the plugin reads Steam's own registry entry, then falls back to `Program Files (x86)\Steam`; on macOS it looks in `~/Library/Application Support/Steam`.
+- **A game is missing from the list**: games still downloading, and games installed by other launchers or added as *non-Steam shortcuts*, aren't listed. Use **Installed apps** or **Browse for a file** for those.
+- **"…does not appear to be installed in any Steam library"**: the game was uninstalled or moved to a drive that isn't mounted. Reinstall it, or re-pick the game in the key settings.
+- **The game launches but the window isn't positioned**: fullscreen games can't be moved — switch the game to windowed or borderless mode. If it is windowed, raise **Wait (seconds)** (games are slow to show a window) and check the game isn't applying its own saved geometry afterwards.
+- **The wrong window is grabbed**: some games show a launcher window first. Add a **Title contains** filter matching the real game window, or set **Process name** to the game's executable.
 
 ### macOS
 

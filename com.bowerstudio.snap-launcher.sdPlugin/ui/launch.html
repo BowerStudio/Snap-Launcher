@@ -91,11 +91,12 @@
 			<sdpi-select setting="appSource">
 				<option value="installed">Installed apps</option>
 				<option value="running">Running apps</option>
+				<option value="steam">Steam games</option>
 				<option value="browse">Browse for a file</option>
 			</sdpi-select>
 		</sdpi-item>
 
-		<!-- All three pickers write the same "appPath" setting; the "Choose from"
+		<!-- All four pickers write the same "appPath" setting; the "Choose from"
 		     selector only decides which one is visible. -->
 		<sdpi-item label="Running apps" class="source-running">
 			<sdpi-select
@@ -117,6 +118,20 @@
 			></sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item label="Steam games" class="source-steam" hidden>
+			<sdpi-select
+				setting="appPath"
+				datasource="getSteamGames"
+				show-refresh
+				loading="Scanning Steam libraries…"
+				placeholder="Pick an installed Steam game"
+			></sdpi-select>
+		</sdpi-item>
+		<div class="hint source-steam" hidden>
+			Every game installed in your Steam libraries. The key launches it through Steam, exactly like pressing Play — the
+			client starts first if it isn't already running.
+		</div>
+
 		<sdpi-item label="App path" class="source-browse" hidden>
 			<!-- The accept filter is set from the plugin's platform: an .app
 			     bundle on macOS, executables and shortcuts on Windows. -->
@@ -130,6 +145,9 @@
 		<sdpi-item label="Arguments">
 			<sdpi-textfield setting="launchArgs" placeholder="Optional command-line arguments"></sdpi-textfield>
 		</sdpi-item>
+		<div class="hint source-steam" hidden>
+			Passed to the game on top of the launch options set in Steam. Leave empty to use Steam's own options only.
+		</div>
 
 		<!-- ============================== Launch =============================== -->
 		<div class="heading">Launch</div>
@@ -142,6 +160,10 @@
 			<sdpi-textfield setting="waitSeconds" placeholder="10"></sdpi-textfield>
 		</sdpi-item>
 		<div class="hint">How long to wait for the app's window after launching — raise for slow starters.</div>
+		<div class="hint source-steam" hidden>
+			Only used when the key positions the window. A game that isn't being positioned is left to start in its own time,
+			however long Steam, shader compilation and anti-cheat take.
+		</div>
 
 		<!-- ========================== Virtual desktop ========================== -->
 		<!-- Windows only: macOS Spaces expose no API for enumerating, creating,
@@ -245,6 +267,7 @@
 				const source = (sourceSelect && sourceSelect.value) || "running";
 				document.querySelectorAll(".source-running").forEach((el) => (el.hidden = source !== "running"));
 				document.querySelectorAll(".source-installed").forEach((el) => (el.hidden = source !== "installed"));
+				document.querySelectorAll(".source-steam").forEach((el) => (el.hidden = source !== "steam"));
 				document.querySelectorAll(".source-browse").forEach((el) => (el.hidden = source !== "browse"));
 			}
 			window.addEventListener("DOMContentLoaded", () => {

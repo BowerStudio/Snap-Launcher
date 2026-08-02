@@ -22,6 +22,7 @@ function unsupportedBackend(platform: string): PlatformBackend {
 		close: fail,
 		listRunningApps: fail,
 		listInstalledApps: fail,
+		listSteamGames: fail,
 		listMonitors: fail,
 	};
 }

@@ -6,7 +6,7 @@ import type { CloseConfig, CloseMode, LaunchConfig, PositionMode } from "./platf
  */
 export type LaunchSettings = {
 	appPath?: string;
-	/** Which app picker the PI shows (installed | running | browse). Cosmetic only. */
+	/** Which app picker the PI shows (installed | running | steam | browse). Cosmetic only. */
 	appSource?: string;
 	launchArgs?: string;
 	titleFilter?: string;
@@ -36,7 +36,7 @@ export type LaunchSettings = {
  */
 export type CloseSettings = {
 	appPath?: string;
-	/** Which app picker the PI shows (installed | running | browse). Cosmetic only. */
+	/** Which app picker the PI shows (installed | running | steam | browse). Cosmetic only. */
 	appSource?: string;
 	titleFilter?: string;
 	processName?: string;

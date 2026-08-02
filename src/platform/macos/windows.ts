@@ -1,4 +1,4 @@
-import type { CloseConfig, LaunchConfig } from "../types";
+import type { CloseConfig, LaunchConfig, SteamTarget } from "../types";
 import { APP_HELPERS } from "./apps";
 import { DISPLAY_HELPERS } from "./displays";
 import { jsConfig, wrapScript } from "./scripts";
@@ -92,7 +92,7 @@ function processForPid(pid) {
  */
 function candidateWindows(identity, bundlePath, processNameOverride) {
     var result = [];
-    var apps = runningAppsFor(identity, bundlePath);
+    var apps = runningAppsFor(identity, bundlePath, processNameOverride);
 
     for (var a = 0; a < apps.length; a++) {
         var pid = apps[a].processIdentifier;
@@ -187,13 +187,32 @@ function targetRect(cfg) {
     return zoneRect(mon.workLeft, mon.workTop, mon.workWidth, mon.workHeight, cfg.zone);
 }
 
-/** The bundle path for the configured app, or a failure naming the problem. */
+/**
+ * The bundle path for the configured app, or a failure naming the problem.
+ *
+ * A Steam game has no bundle path to resolve — it is identified by its install
+ * directory instead, which is therefore what stands in for one. A game with no
+ * files at all cannot be recognized however it is started, so that is reported
+ * for what it is rather than left to surface as a mystifying timeout.
+ */
 function requireBundlePath(identity) {
+    if (STEAM) {
+        if (!STEAM.installDir && !CFG.processName) {
+            fail('"' + STEAM.name + '" does not appear to be installed in any Steam library. Install it in Steam, or set a Process name override in the key settings.');
+        }
+        return STEAM.installDir;
+    }
+
     var bundlePath = resolveBundlePath(identity);
     if (!bundlePath) {
         fail('Could not find the application for "' + identity + '". Re-pick the app in the key settings.');
     }
     return bundlePath;
+}
+
+/** What to call the target in a message: a game's name, or its bundle path. */
+function targetDescription(bundlePath) {
+    return STEAM ? STEAM.name : bundlePath;
 }
 `;
 
@@ -214,10 +233,10 @@ ${WINDOW_HELPERS}`;
  * and the backend declares the feature unsupported, so a value carried over
  * from a Windows machine must not fail the press.
  */
-export function buildLaunchScript(config: LaunchConfig): string {
+export function buildLaunchScript(config: LaunchConfig, steam?: SteamTarget | null): string {
 	return wrapScript(
 		`
-${jsConfig(config)}
+${jsConfig(config, steam)}
         assertTrusted();
 
         var bundlePath = requireBundlePath(CFG.appPath);
@@ -234,17 +253,34 @@ ${jsConfig(config)}
             // reusing one is not mistaken for a freshly created window.
             var before = candidateWindows(CFG.appPath, bundlePath, CFG.processName).map(function (c) { return c.key; });
 
-            var parsed = parseIdentity(CFG.appPath);
-            var args = parsed.bundleId ? ['-b', parsed.bundleId] : [bundlePath];
-            if (CFG.launchArgs) {
-                args.push('--args');
-                var extra = CFG.launchArgs.split(/\\s+/);
-                for (var e = 0; e < extra.length; e++) {
-                    if (extra[e].length) args.push(extra[e]);
+            if (STEAM) {
+                // Opening the steam:// URL is what clicking Play does: Steam
+                // starts its client first if it has to, and applies the game's
+                // configured launch options.
+                if (runTool('/usr/bin/open', [STEAM.launchUrl]) !== 0) {
+                    fail('Could not ask Steam to launch "' + STEAM.name + '". Check that Steam is installed.');
+                }
+            } else {
+                var parsed = parseIdentity(CFG.appPath);
+                var args = parsed.bundleId ? ['-b', parsed.bundleId] : [bundlePath];
+                if (CFG.launchArgs) {
+                    args.push('--args');
+                    var extra = CFG.launchArgs.split(/\\s+/);
+                    for (var e = 0; e < extra.length; e++) {
+                        if (extra[e].length) args.push(extra[e]);
+                    }
+                }
+                if (runTool('/usr/bin/open', args) !== 0) {
+                    fail('Could not launch "' + bundlePath + '".');
                 }
             }
-            if (runTool('/usr/bin/open', args) !== 0) {
-                fail('Could not launch "' + bundlePath + '".');
+
+            // A game can spend minutes in Steam's bootstrap and shader
+            // compilation before it shows a window. When the key has nothing to
+            // do with that window, there is nothing to wait for: report the
+            // launch rather than failing the press on a meaningless timeout.
+            if (STEAM && CFG.positionMode === 'none') {
+                return { ok: true, launched: true, positioned: false, movedDesktop: false, pid: 0, title: STEAM.name };
             }
 
             var deadline = Date.now() + Math.max(1, CFG.waitSeconds) * 1000;
@@ -258,7 +294,7 @@ ${jsConfig(config)}
                 target = findTargetWindow(CFG.appPath, bundlePath, CFG.processName, CFG.titleFilter, null);
             }
             if (!target) {
-                fail('Timed out waiting for a window of "' + bundlePath + '". Increase the wait time, or set a Process name override if the launcher differs from the windowed process.');
+                fail('Timed out waiting for a window of "' + targetDescription(bundlePath) + '". Increase the wait time, or set a Process name override if the launcher differs from the windowed process.');
             }
         }
 
@@ -290,16 +326,16 @@ ${jsConfig(config)}
  * Reads the current rectangle of the configured app's window, in the same
  * space a later position operation re-applies, so a capture round-trips.
  */
-export function buildCaptureScript(config: LaunchConfig): string {
+export function buildCaptureScript(config: LaunchConfig, steam?: SteamTarget | null): string {
 	return wrapScript(
 		`
-${jsConfig(config)}
+${jsConfig(config, steam)}
         assertTrusted();
 
         var bundlePath = requireBundlePath(CFG.appPath);
         var target = findTargetWindow(CFG.appPath, bundlePath, CFG.processName, CFG.titleFilter, null);
         if (!target) {
-            fail('"' + bundlePath + '" does not appear to be running with a visible window. Start it, arrange the window, then capture.');
+            fail('"' + targetDescription(bundlePath) + '" does not appear to be running with a visible window. Start it, arrange the window, then capture.');
         }
 
         if (attrValue(target.win, 'AXMinimized') === true) {
@@ -334,14 +370,14 @@ ${jsConfig(config)}
  *
  * Finding nothing to close is success: the action is idempotent.
  */
-export function buildCloseScript(config: CloseConfig): string {
+export function buildCloseScript(config: CloseConfig, steam?: SteamTarget | null): string {
 	return wrapScript(
 		`
-${jsConfig(config)}
+${jsConfig(config, steam)}
         assertTrusted();
 
-        var bundlePath = resolveBundlePath(CFG.appPath);
-        if (!bundlePath) {
+        var bundlePath = STEAM ? STEAM.installDir : resolveBundlePath(CFG.appPath);
+        if (!bundlePath && !STEAM) {
             // Nothing installed under that identity means nothing to close.
             return { ok: true, found: 0, closed: 0, killed: 0 };
         }
