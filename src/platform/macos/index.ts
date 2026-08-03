@@ -2,8 +2,10 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { PlatformBackend } from "../backend";
+import { toAppIconResult, type RawAppIcon } from "../icons";
 import { listSteamGames, resolveSteamTarget } from "../steam";
 import type {
+	AppIconResult,
 	CaptureResult,
 	CloseConfig,
 	CloseResult,
@@ -16,6 +18,7 @@ import type {
 } from "../types";
 import { buildInstalledListScript, buildRunningListScript } from "./apps";
 import { buildDisplayListScript, toMonitorEntries, type RawScreen } from "./displays";
+import { buildAppIconScript } from "./icons";
 import { runOsascript } from "./osascript";
 import { buildCaptureScript, buildCloseScript, buildLaunchScript } from "./windows";
 
@@ -89,5 +92,11 @@ export const macosBackend: PlatformBackend = {
 	async listMonitors(): Promise<MonitorEntry[]> {
 		const screens = await runOsascript<RawScreen[]>(buildDisplayListScript(), OVERHEAD_MS);
 		return toMonitorEntries(screens);
+	},
+
+	async findAppIcon(appPath: string): Promise<AppIconResult> {
+		const steam = resolveSteamTarget(steamRoots(), appPath);
+		const raw = await runOsascript<RawAppIcon>(buildAppIconScript(appPath, steam), OVERHEAD_MS);
+		return toAppIconResult(raw);
 	},
 };

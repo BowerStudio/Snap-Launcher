@@ -1,4 +1,5 @@
 import type {
+	AppIconResult,
 	CaptureResult,
 	CloseConfig,
 	CloseResult,
@@ -53,4 +54,12 @@ export type PlatformBackend = {
 
 	/** Connected displays with bounds and work areas. */
 	listMonitors(): Promise<MonitorEntry[]>;
+
+	/**
+	 * The icon the application ships alongside itself, rendered to a PNG data
+	 * URI. Reports "no icon" in-band (found: false) rather than by rejecting —
+	 * an app without one is ordinary, and a key that cannot show its app's icon
+	 * still works perfectly well.
+	 */
+	findAppIcon(appPath: string): Promise<AppIconResult>;
 };

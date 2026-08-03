@@ -24,6 +24,7 @@ function unsupportedBackend(platform: string): PlatformBackend {
 		listInstalledApps: fail,
 		listSteamGames: fail,
 		listMonitors: fail,
+		findAppIcon: fail,
 	};
 }
 

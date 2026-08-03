@@ -28,6 +28,30 @@ to follow [Semantic Versioning](https://semver.org/).
       _Don't move the window_ the key reports success as soon as Steam has been handed the game,
       instead of failing on a timeout that meant nothing.
 
+- **Automatic key images.** A _Launch & Position_ key now shows the app's own icon, alongside
+  the auto-title it already applied. Nothing to configure — pick an app and the key takes its
+  icon.
+    - On Windows the icon is looked for in three places, best first: the icon named by the
+      app's Start Menu shortcut, a `.ico` shipped under the folder holding its executable
+      (including several levels down, where Electron apps bury theirs), and finally **the icon
+      compiled into the executable itself**. That last one is what answers for most Windows
+      apps, which ship no icon file at all. On macOS the icon comes from the `.icns` inside the
+      app bundle.
+    - **Steam games** are searched in their install folder — any icon file in it, then the icon
+      inside whichever of the game's executables its name ties it to.
+    - An icon file is only used when its name ties it to the app: the executable's name, a
+      conventional one like `app.ico` or `icon.ico`, a shared prefix, or a shared word. Folders
+      shared by many programs — `Windows`, `System32`, `Program Files`, and the like — are not
+      searched at all, and go straight to the executable. Between them, a key never ends up
+      wearing some other program's logo.
+    - Icons are read at full resolution, including the 256-pixel artwork modern apps ship, with
+      transparency intact, then rendered to a PNG at key resolution and stored with the key so
+      it survives a Stream Deck restart without touching the disk again. **Drop your own image
+      on the key and it wins**, exactly as it does over the auto-title.
+    - The Property Inspector shows a **Key image** line saying which file the icon came from, or
+      why none was used. Microsoft Store apps are addressed by package identity rather than by
+      a file, so there is nothing to read; those keys keep the action's own image.
+
 ### Fixed
 
 - An app that could not be identified at all — a Microsoft Store package that is no longer
