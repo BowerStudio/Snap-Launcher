@@ -1,8 +1,10 @@
 import path from "node:path";
 
 import type { PlatformBackend } from "../backend";
+import { toAppIconResult, type RawAppIcon } from "../icons";
 import { listSteamGames, parseSteamAppId, resolveSteamTarget } from "../steam";
 import type {
+	AppIconResult,
 	CaptureResult,
 	CloseConfig,
 	CloseResult,
@@ -14,6 +16,7 @@ import type {
 	SteamTarget,
 } from "../types";
 import {
+	buildAppIconScript,
 	buildCaptureScript,
 	buildCloseScript,
 	buildInstalledListScript,
@@ -129,5 +132,15 @@ export const windowsBackend: PlatformBackend = {
 			return [];
 		}
 		return raw.map((m, i) => ({ ...m, index: displayIndex(m.deviceName, i + 1) }));
+	},
+
+	async findAppIcon(appPath: string): Promise<AppIconResult> {
+		// A game's icon is looked for in its install directory, so the same
+		// Steam resolution the other operations do is needed here too.
+		const steam = parseSteamAppId(appPath) ? resolveSteamTarget(await steamRoots(), appPath) : null;
+		// Searching a folder tree is closer to the installed-apps scan than to
+		// the quick window operations, so it gets the same allowance.
+		const raw = await runPowerShell<RawAppIcon>(buildAppIconScript(appPath, steam), 30_000);
+		return toAppIconResult(raw);
 	},
 };

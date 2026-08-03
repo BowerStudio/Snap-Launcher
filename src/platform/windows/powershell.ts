@@ -4,11 +4,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { ICON_MAX_PX } from "../types";
 import type { CloseConfig, LaunchConfig, SteamTarget } from "../types";
 
 // Shared shapes now live in ../types; re-exported so existing importers of this
 // module (including the test suite) keep working unchanged.
 export type {
+	AppIcon,
+	AppIconResult,
 	CaptureResult,
 	CloseConfig,
 	CloseMode,
@@ -638,6 +641,24 @@ function Initialize-VDesk {
 `;
 
 /**
+ * Follows a Start Menu shortcut to the executable it points at. Shared by the
+ * window scripts (which need the process name) and the icon script (which needs
+ * the folder), so a .lnk is resolved exactly one way throughout.
+ */
+const SHORTCUTS = `
+function Resolve-TargetExe([string]$p) {
+    if ($p -and $p.ToLower().EndsWith('.lnk')) {
+        try {
+            $sh = New-Object -ComObject WScript.Shell
+            $t = $sh.CreateShortcut($p).TargetPath
+            if ($t) { return $t }
+        } catch { }
+    }
+    return $p
+}
+`;
+
+/**
  * Resolves what to launch and how to recognize its windows, then defines
  * Find-TargetWindow over WindowFinder::ListAll().
  *
@@ -655,17 +676,7 @@ function Initialize-VDesk {
  * it.
  */
 const FIND_WINDOW = `
-function Resolve-TargetExe([string]$p) {
-    if ($p -and $p.ToLower().EndsWith('.lnk')) {
-        try {
-            $sh = New-Object -ComObject WScript.Shell
-            $t = $sh.CreateShortcut($p).TargetPath
-            if ($t) { return $t }
-        } catch { }
-    }
-    return $p
-}
-
+${SHORTCUTS}
 function Get-CandidateWindows {
     $wins = @([WindowFinder]::ListAll())
     if ($procName) {
@@ -735,6 +746,546 @@ try {
     $resolveError = $_.Exception.Message
 }
 `;
+
+/**
+ * Reading the icon Windows applications actually carry: the one compiled into
+ * the executable itself, as RT_GROUP_ICON and RT_ICON resources.
+ *
+ * Most Windows apps ship no .ico at all — Notepad, Photoshop and Acrobat all
+ * keep theirs inside the .exe — so without this the file search finds nothing
+ * for the majority of keys.
+ *
+ * The group's frames are copied back out and reassembled into a standalone .ico
+ * in memory, rather than extracted with PrivateExtractIcons or
+ * ExtractAssociatedIcon. Both of those hand back a single HICON at one
+ * requested size, upscaling a small frame to fill it; rebuilding the container
+ * keeps every frame at its authored resolution and hands the result to exactly
+ * the same decoder a real .ico goes through.
+ *
+ * LOAD_LIBRARY_AS_DATAFILE maps the file without running a line of its code —
+ * this reads an executable, it never loads one.
+ *
+ * Exported for tests.
+ */
+export const ICON_RESOURCES = `
+function Initialize-IconResources {
+    if ('SnapIcons.IconResources' -as [type]) { return }
+    Add-Type -ReferencedAssemblies 'System.Drawing' -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+namespace SnapIcons {
+
+public static class IconResources {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr LoadLibraryEx(string file, IntPtr reserved, uint flags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeLibrary(IntPtr module);
+
+    private delegate bool EnumResNameProc(IntPtr module, IntPtr type, IntPtr name, IntPtr param);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool EnumResourceNames(IntPtr module, IntPtr type, EnumResNameProc callback, IntPtr param);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr FindResource(IntPtr module, IntPtr name, IntPtr type);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LoadResource(IntPtr module, IntPtr resource);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LockResource(IntPtr data);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint SizeofResource(IntPtr module, IntPtr resource);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CreateIconFromResourceEx(byte[] bits, uint size, bool isIcon, uint version, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr icon);
+
+    private const uint LOAD_LIBRARY_AS_DATAFILE = 0x00000002;
+    private const uint ICON_RESOURCE_VERSION = 0x00030000;
+    private static readonly IntPtr RT_ICON = (IntPtr)3;
+    private static readonly IntPtr RT_GROUP_ICON = (IntPtr)14;
+
+    /// <summary>
+    /// Decodes one icon frame - a DIB, colour plane and transparency mask
+    /// together - to a bitmap at the size the frame was authored at.
+    /// </summary>
+    /// <remarks>
+    /// System.Drawing.Icon cannot do this job. A 256-pixel frame records its
+    /// dimensions as the byte 0, because the field cannot hold 256; Icon's
+    /// nearest-size matching takes that at face value and hands back the next
+    /// size down, so Photoshop's 256px icon arrives as 64px. Passing the frame
+    /// to the API Windows uses itself, at the size the directory says it is,
+    /// gets the frame that was asked for.
+    /// </remarks>
+    public static System.Drawing.Bitmap DecodeFrame(byte[] frame, int width, int height) {
+        IntPtr icon = CreateIconFromResourceEx(frame, (uint)frame.Length, true, ICON_RESOURCE_VERSION, width, height, 0);
+        if (icon == IntPtr.Zero) return null;
+        try {
+            // FromHandle does not take ownership, so the handle is still ours
+            // to destroy; ToBitmap copies the pixels out, alpha included.
+            using (System.Drawing.Icon managed = System.Drawing.Icon.FromHandle(icon)) {
+                return managed.ToBitmap();
+            }
+        } finally {
+            DestroyIcon(icon);
+        }
+    }
+
+    private static byte[] ResourceBytes(IntPtr module, IntPtr type, IntPtr name) {
+        IntPtr resource = FindResource(module, name, type);
+        if (resource == IntPtr.Zero) return null;
+        uint size = SizeofResource(module, resource);
+        if (size == 0) return null;
+        IntPtr handle = LoadResource(module, resource);
+        if (handle == IntPtr.Zero) return null;
+        IntPtr data = LockResource(handle);
+        if (data == IntPtr.Zero) return null;
+        byte[] bytes = new byte[size];
+        Marshal.Copy(data, bytes, 0, (int)size);
+        return bytes;
+    }
+
+    /// <summary>
+    /// The executable's application icon, as the bytes of a standalone .ico
+    /// file, or null when it carries none.
+    /// </summary>
+    public static byte[] Extract(string path) {
+        IntPtr module = LoadLibraryEx(path, IntPtr.Zero, LOAD_LIBRARY_AS_DATAFILE);
+        if (module == IntPtr.Zero) return null;
+        try {
+            // PE resource directories are stored sorted, and the first icon
+            // group is the one Explorer shows - the same icon index 0 that
+            // ExtractIcon would give.
+            //
+            // The group is read inside the callback, not after it. A resource
+            // named by a string rather than an ordinal - as explorer.exe's own
+            // icon is - arrives in a temporary buffer that the loader frees the
+            // moment the callback returns, so a name kept for later names
+            // nothing at all.
+            byte[] group = null;
+            EnumResourceNames(module, RT_GROUP_ICON, delegate(IntPtr m, IntPtr t, IntPtr n, IntPtr p) {
+                group = ResourceBytes(m, RT_GROUP_ICON, n);
+                return false;
+            }, IntPtr.Zero);
+            if (group == null || group.Length < 6) return null;
+
+            int count = BitConverter.ToUInt16(group, 4);
+            if (count < 1 || group.Length < 6 + (count * 14)) return null;
+
+            // A GRPICONDIRENTRY is a 16-byte ICONDIRENTRY with the frame's
+            // 4-byte file offset replaced by its 2-byte resource id, so the
+            // first 12 bytes carry over untouched.
+            List<byte[]> entries = new List<byte[]>();
+            List<byte[]> frames = new List<byte[]>();
+            int total = 0;
+            for (int i = 0; i < count; i++) {
+                int at = 6 + (i * 14);
+                byte[] frame = ResourceBytes(module, RT_ICON, (IntPtr)BitConverter.ToUInt16(group, at + 12));
+                if (frame == null || frame.Length == 0) continue;
+                byte[] entry = new byte[16];
+                Array.Copy(group, at, entry, 0, 12);
+                // Trust the resource's real length over the recorded one.
+                BitConverter.GetBytes(frame.Length).CopyTo(entry, 8);
+                entries.Add(entry);
+                frames.Add(frame);
+                total += frame.Length;
+            }
+            if (entries.Count == 0) return null;
+
+            byte[] ico = new byte[6 + (entries.Count * 16) + total];
+            ico[2] = 1; // type: icon
+            BitConverter.GetBytes((ushort)entries.Count).CopyTo(ico, 4);
+            int offset = 6 + (entries.Count * 16);
+            for (int i = 0; i < entries.Count; i++) {
+                BitConverter.GetBytes(offset).CopyTo(entries[i], 12);
+                entries[i].CopyTo(ico, 6 + (i * 16));
+                frames[i].CopyTo(ico, offset);
+                offset += frames[i].Length;
+            }
+            return ico;
+        } finally {
+            FreeLibrary(module);
+        }
+    }
+}
+}
+'@
+}
+
+# The executable's own icon as .ico bytes, or $null. The leading comma stops
+# PowerShell unrolling the byte array into the pipeline one byte at a time.
+function Get-ExecutableIcon([string]$exe) {
+    if (-not $exe) { return $null }
+    try { if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { return $null } } catch { return $null }
+    Initialize-IconResources
+    $bytes = [SnapIcons.IconResources]::Extract($exe)
+    if ($null -eq $bytes -or $bytes.Length -eq 0) { return $null }
+    return ,$bytes
+}
+`;
+
+/**
+ * Finding an application's icon file on disk, and decoding it.
+ *
+ * A Windows app that ships an icon puts a .ico under the folder holding its
+ * executable. Sometimes that is right beside it; Electron apps bury it several
+ * folders down (Signal's sits at resources/app.asar.unpacked/build/icons/win),
+ * so the walk goes deep, under both a depth and a result cap — the very same
+ * code is pointed at a Steam game's install directory, which can hold tens of
+ * thousands of files.
+ *
+ * A candidate must be tied to the app by name: exactly the executable's, one of
+ * the conventional generic names, one that shares a prefix with it, or one that
+ * shares a whole word with it (which is what connects "Warhammer 40,000:
+ * Darktide" to Darktide.exe). A file with an unrelated name is never a
+ * candidate, however alone it sits in the folder — System32 holds exactly one
+ * .ico, OneDrive's, and a Notepad key showing the OneDrive logo is worse than a
+ * Notepad key showing nothing of the sort.
+ *
+ * Within that, the best-related name wins, then the shallowest, then the
+ * largest; ties break on name so one folder always yields the same icon.
+ *
+ * The same ranking serves both extensions this searches for: .ico files, and
+ * the .exe files a Steam game's icon has to be read out of, since a game's
+ * executable is named by its developer and known nowhere else.
+ *
+ * Exported for tests.
+ */
+export const ICON_HELPERS = `
+Add-Type -AssemblyName System.Drawing
+
+$script:GenericIconNames = @('app', 'appicon', 'application', 'icon', 'logo', 'main')
+
+# Folders that belong to no single application. An .ico found under one of them
+# says nothing about the app being looked at — pointing at C:\\Windows\\explorer.exe
+# otherwise turns up some unrelated installer's AppIcon.ico several folders
+# away — and walking them is slow enough to be worth avoiding on its own. An app
+# living directly in one of these goes straight to its executable's own icon.
+$script:SharedFolders = @(@(
+    $env:SystemRoot
+    if ($env:SystemRoot) { Join-Path $env:SystemRoot 'System32'; Join-Path $env:SystemRoot 'SysWOW64' }
+    $env:ProgramFiles
+    [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+    $env:ProgramData
+    $env:LOCALAPPDATA
+    if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Programs' }
+    $env:APPDATA
+    $env:USERPROFILE
+) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\\').ToLower() })
+
+function Test-SharedFolder([string]$folder) {
+    if (-not $folder) { return $true }
+    $normalized = $folder.TrimEnd('\\').ToLower()
+    # A drive root trims to "c:" and is shared by definition.
+    if ($normalized.Length -le 2) { return $true }
+    return ($script:SharedFolders -contains $normalized)
+}
+
+# Words worth matching on: short ones ("of", "the", "2") connect nothing.
+function Get-NameWords([string]$name) {
+    if (-not $name) { return @() }
+    return @([System.Text.RegularExpressions.Regex]::Split($name.ToLower(), '[^a-z0-9]+') | Where-Object { $_.Length -ge 4 })
+}
+
+function Get-IconCandidates([string]$root, [string]$appName, [string]$filter) {
+    if (-not $root) { return @() }
+    try { if (-not (Test-Path -LiteralPath $root -PathType Container)) { return @() } } catch { return @() }
+
+    # -Depth bounds how far the walk goes and -First bounds what it collects:
+    # between them, an install directory of any size costs a bounded amount.
+    $files = @(Get-ChildItem -LiteralPath $root -Filter $filter -File -Recurse -Depth 6 -Force -ErrorAction SilentlyContinue |
+        Select-Object -First 200)
+    if ($files.Count -eq 0) { return @() }
+
+    $rootLength = $root.TrimEnd('\\').Length + 1
+    $wanted = ''
+    if ($appName) { $wanted = $appName.ToLower() }
+    $words = Get-NameWords $appName
+
+    $ranked = @($files | ForEach-Object {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($_.Name).ToLower()
+        $rank = -1
+        if ($wanted -and $base -eq $wanted) { $rank = 0 }
+        elseif ($script:GenericIconNames -contains $base) { $rank = 1 }
+        elseif ($wanted.Length -ge 3 -and $base.Length -ge 3 -and ($base.StartsWith($wanted) -or $wanted.StartsWith($base))) { $rank = 2 }
+        elseif ($words -contains $base) { $rank = 3 }
+        # An unrelated name is not a candidate at all.
+        if ($rank -lt 0) { return }
+        [pscustomobject]@{
+            Path = $_.FullName
+            Rank = $rank
+            Depth = $_.FullName.Substring($rootLength).Split('\\').Length
+            Size = $_.Length
+            Name = $_.Name
+        }
+    })
+    return @($ranked | Sort-Object Rank, Depth, @{ Expression = 'Size'; Descending = $true }, Name | ForEach-Object { $_.Path })
+}
+
+# Appends candidates from whatever Get-IconCandidates returned, recording where
+# each one's icon must be read from. Written as a loop rather than AddRange
+# because PowerShell unrolls a returned empty array into $null, and
+# AddRange($null) throws where "nothing to add" is the ordinary case.
+#
+# The limit matters: the executable's own icon is appended after these, and it
+# has to stay within the number of candidates actually tried.
+function Add-IconCandidates($list, $paths, [bool]$fromExe, [int]$limit) {
+    $added = 0
+    foreach ($p in @($paths)) {
+        if (-not $p) { continue }
+        $list.Add([pscustomobject]@{ Path = [string]$p; FromExe = $fromExe })
+        $added++
+        if ($added -ge $limit) { break }
+    }
+}
+
+# A Start Menu shortcut usually names the app's icon outright ("...\\app.ico,0"),
+# which beats deducing one from the folder: it is the icon Windows itself shows
+# for the app, chosen by whoever packaged it. The target may be an .ico, or an
+# .exe/.dll carrying the icon in its resources - the latter only at index 0,
+# because any other index names a group this has no way to pick out.
+function Get-ShortcutIcon([string]$lnk) {
+    if (-not $lnk -or -not $lnk.ToLower().EndsWith('.lnk')) { return $null }
+    $location = $null
+    try {
+        $sh = New-Object -ComObject WScript.Shell
+        $location = [string]$sh.CreateShortcut($lnk).IconLocation
+    } catch { return $null }
+    if (-not $location) { return $null }
+
+    $index = 0
+    $comma = $location.LastIndexOf(',')
+    if ($comma -gt 0) {
+        [void][int]::TryParse($location.Substring($comma + 1).Trim(), [ref]$index)
+        $location = $location.Substring(0, $comma)
+    }
+    $location = [Environment]::ExpandEnvironmentVariables($location.Trim().Trim('"'))
+    if (-not $location) { return $null }
+    try { if (-not (Test-Path -LiteralPath $location -PathType Leaf)) { return $null } } catch { return $null }
+
+    $lower = $location.ToLower()
+    if ($lower.EndsWith('.ico')) { return [pscustomobject]@{ Path = $location; FromExe = $false } }
+    if ($index -eq 0 -and ($lower.EndsWith('.exe') -or $lower.EndsWith('.dll'))) {
+        return [pscustomobject]@{ Path = $location; FromExe = $true }
+    }
+    return $null
+}
+
+# One candidate's .ico bytes, whether that is the file itself or the icon
+# resources compiled into an executable. $null when it carries no icon at all.
+# The leading comma stops PowerShell unrolling the array into the pipeline.
+function Get-CandidateIcon($candidate) {
+    $bytes = $null
+    if ($candidate.FromExe) {
+        $bytes = Get-ExecutableIcon $candidate.Path
+    } else {
+        $bytes = [System.IO.File]::ReadAllBytes($candidate.Path)
+    }
+    if ($null -eq $bytes -or $bytes.Length -eq 0) { return $null }
+    return ,$bytes
+}
+
+# An .ico is a container: a 6-byte header, one 16-byte directory entry per
+# frame, then the frames. A frame is a DIB, or - for the large sizes Vista
+# introduced - an entire PNG file embedded verbatim. The biggest frame is
+# picked, breaking ties on colour depth; a malformed entry is skipped rather
+# than trusted, since the offsets it carries are used to index the file.
+function Select-IconFrame([byte[]]$bytes) {
+    if ($bytes.Length -lt 22) { return $null }
+    if ($bytes[0] -ne 0 -or $bytes[1] -ne 0 -or $bytes[2] -ne 1 -or $bytes[3] -ne 0) { return $null }
+
+    $count = [int][BitConverter]::ToUInt16($bytes, 4)
+    $best = $null
+    for ($i = 0; $i -lt $count; $i++) {
+        $entry = 6 + ($i * 16)
+        if (($entry + 16) -gt $bytes.Length) { break }
+
+        # A zero dimension means 256: the field is one byte and cannot hold it.
+        $w = [int]$bytes[$entry]; if ($w -eq 0) { $w = 256 }
+        $h = [int]$bytes[$entry + 1]; if ($h -eq 0) { $h = 256 }
+        $bits = [int][BitConverter]::ToUInt16($bytes, $entry + 6)
+        $length = [long][BitConverter]::ToUInt32($bytes, $entry + 8)
+        $offset = [long][BitConverter]::ToUInt32($bytes, $entry + 12)
+        if ($length -le 0 -or $offset -lt 22 -or ($offset + $length) -gt $bytes.Length) { continue }
+
+        $area = $w * $h
+        if ($best -and ($area -lt $best.Area -or ($area -eq $best.Area -and $bits -le $best.Bits))) { continue }
+        $best = [pscustomobject]@{
+            Width = $w
+            Height = $h
+            Bits = $bits
+            Area = $area
+            Offset = [int]$offset
+            Length = [int]$length
+            IsPng = ($length -gt 8 -and $bytes[$offset] -eq 0x89 -and $bytes[$offset + 1] -eq 0x50 -and $bytes[$offset + 2] -eq 0x4E -and $bytes[$offset + 3] -eq 0x47)
+        }
+    }
+    return $best
+}
+
+# Renders one frame to a PNG, downscaled to fit $maxPx. A PNG-compressed frame
+# already is a PNG file and is decoded as one; a DIB frame goes through
+# System.Drawing.Icon, which recombines its colour plane and transparency mask
+# the way Windows does. The canvas is 32bpp ARGB and cleared to transparent so
+# an icon's rounded edges stay transparent on the key.
+#
+# Works from bytes rather than a path, because an icon read out of an
+# executable's resources never had a file of its own.
+function ConvertTo-IconPng([byte[]]$bytes, $frame, [int]$maxPx) {
+    $source = $null
+    $frameStream = $null
+    $canvas = $null
+    $graphics = $null
+    $output = $null
+    try {
+        if ($frame.IsPng) {
+            $frameStream = New-Object System.IO.MemoryStream
+            $frameStream.Write($bytes, $frame.Offset, $frame.Length)
+            $frameStream.Position = 0
+            $source = [System.Drawing.Image]::FromStream($frameStream)
+        } else {
+            Initialize-IconResources
+            [byte[]]$frameBytes = New-Object byte[] $frame.Length
+            [Array]::Copy($bytes, $frame.Offset, $frameBytes, 0, $frame.Length)
+            $source = [SnapIcons.IconResources]::DecodeFrame($frameBytes, $frame.Width, $frame.Height)
+            if ($null -eq $source) { throw 'The icon frame could not be decoded.' }
+        }
+
+        $width = $source.Width
+        $height = $source.Height
+        $scale = 1.0
+        if ($width -gt $maxPx -or $height -gt $maxPx) { $scale = [Math]::Min($maxPx / $width, $maxPx / $height) }
+        $targetWidth = [Math]::Max(1, [int][Math]::Round($width * $scale))
+        $targetHeight = [Math]::Max(1, [int][Math]::Round($height * $scale))
+
+        $canvas = New-Object System.Drawing.Bitmap -ArgumentList $targetWidth, $targetHeight, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($canvas)
+        $graphics.Clear([System.Drawing.Color]::Transparent)
+        $graphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $graphics.DrawImage($source, 0, 0, $targetWidth, $targetHeight)
+
+        $output = New-Object System.IO.MemoryStream
+        $canvas.Save($output, [System.Drawing.Imaging.ImageFormat]::Png)
+        return [pscustomobject]@{ Base64 = [Convert]::ToBase64String($output.ToArray()); Width = $width; Height = $height }
+    } finally {
+        if ($graphics) { $graphics.Dispose() }
+        if ($canvas) { $canvas.Dispose() }
+        if ($source) { $source.Dispose() }
+        if ($frameStream) { $frameStream.Dispose() }
+        if ($output) { $output.Dispose() }
+    }
+}
+`;
+
+/**
+ * Finds the icon a key's application carries and returns it as base64 PNG.
+ *
+ * Every place worth looking is collected first, best candidate to worst, and
+ * then tried in turn: the icon named by the app's own Start Menu shortcut, a
+ * .ico shipped under the folder holding the executable, and finally the icon
+ * compiled into the executable itself. The last of those is what answers for
+ * most Windows apps, which ship no icon file at all.
+ *
+ * Finding nothing is reported as ok/found:false with a reason the Property
+ * Inspector can show, not as an error: the key simply keeps the action's own
+ * image.
+ */
+export function buildAppIconScript(appPath: string, steam?: SteamTarget | null): string {
+	return `
+${PROLOG}
+$appPath = ${psJson(appPath)}
+$steam = ${steam ? psJson(steam) : "$null"}
+${APPX}
+${SHORTCUTS}
+${ICON_RESOURCES}
+${ICON_HELPERS}
+
+try {
+    $candidates = New-Object System.Collections.Generic.List[object]
+    $reason = $null
+
+    if ($steam) {
+        # A game's executable name is the developer's choice and is recorded
+        # nowhere Snap Launcher can read, so its install directory is the whole
+        # search: first any icon file in it, then the icon compiled into
+        # whichever of its executables the game's name ties it to.
+        if ($steam.installDir) {
+            Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.ico') $false 5
+            Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.exe') $true 3
+            if ($candidates.Count -eq 0) { $reason = 'No icon matching "' + $steam.name + '" was found in its install folder.' }
+        } else {
+            $reason = '"' + $steam.name + '" is not installed in any Steam library.'
+        }
+    } elseif (Get-TargetAumid $appPath) {
+        # Store apps are addressed by AppUserModelId, so there is no executable
+        # to read; their artwork is PNG assets described by the package manifest.
+        $reason = 'Store apps carry no icon this can read — the key keeps its own image.'
+    } else {
+        # A Start Menu shortcut's own icon comes first: whoever packaged the app
+        # chose it, so it beats anything deduced from the folder.
+        $shortcutIcon = Get-ShortcutIcon $appPath
+        if ($shortcutIcon) { $candidates.Add($shortcutIcon) }
+
+        $exe = Resolve-TargetExe $appPath
+        $folder = $null
+        if ($exe) { try { $folder = [System.IO.Path]::GetDirectoryName($exe) } catch { } }
+        if ($folder -and -not (Test-SharedFolder $folder)) {
+            Add-IconCandidates $candidates (Get-IconCandidates $folder ([System.IO.Path]::GetFileNameWithoutExtension($exe)) '*.ico') $false 5
+        }
+        # Last, and most often the one that answers: the icon compiled into the
+        # executable. An authored .ico beside it is the better image when there
+        # is one, which is why this comes after the search rather than instead.
+        if ($exe) { $candidates.Add([pscustomobject]@{ Path = $exe; FromExe = $true }) }
+        if ($candidates.Count -eq 0) { $reason = 'Could not work out where this application lives on disk.' }
+    }
+
+    # The first candidate that actually decodes wins. Carrying the .ico
+    # extension is no guarantee of being an icon — Acrobat's Start Menu shortcut
+    # points at an "_SC_Acrobat.ico" that is really a DLL — so a candidate that
+    # fails to decode is passed over rather than failing the whole lookup.
+    $failure = $null
+    foreach ($candidate in @($candidates | Select-Object -First 9)) {
+        try {
+            $bytes = Get-CandidateIcon $candidate
+            if ($null -eq $bytes) {
+                $failure = '"' + $candidate.Path + '" carries no icon of its own.'
+                continue
+            }
+            $frame = Select-IconFrame $bytes
+            if (-not $frame) {
+                $failure = '"' + $candidate.Path + '" is not a readable icon file.'
+                continue
+            }
+            $png = ConvertTo-IconPng $bytes $frame ${ICON_MAX_PX}
+            $out = @{ ok = $true; found = $true; path = $candidate.Path; width = $png.Width; height = $png.Height; png = $png.Base64 }
+            Write-Output (ConvertTo-Json -InputObject $out -Compress)
+            exit 0
+        } catch {
+            $failure = $_.Exception.Message
+        }
+    }
+
+    # Each failure message already names the file it is about and reads as a
+    # whole sentence, so the last one stands as the reason on its own.
+    if (-not $reason) {
+        if ($failure) { $reason = $failure } else { $reason = 'No icon could be found for this app.' }
+    }
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $true; found = $false; reason = $reason } -Compress)
+} catch {
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
+}
+`;
+}
 
 /** Embeds a value as a single-quoted JSON literal ('' escapes quotes). */
 function psJson(value: unknown): string {

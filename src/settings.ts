@@ -28,6 +28,16 @@ export type LaunchSettings = {
 	/** App the key was last auto-titled for, and the title that was applied. */
 	titledFor?: string;
 	autoTitle?: string;
+	/**
+	 * App the key's image was last looked up for, and the app icon that was
+	 * found — a PNG data URI, empty when the app ships none. Stored rather than
+	 * re-derived because a plugin-set image does not survive a Stream Deck
+	 * restart, and rescanning the disk for every key on startup would not do.
+	 */
+	iconFor?: string;
+	autoImage?: string;
+	/** Where the key's image came from; shown in the PI. */
+	iconStatus?: string;
 };
 
 /**

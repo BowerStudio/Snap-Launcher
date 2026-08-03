@@ -36,6 +36,7 @@ test("an unsupported platform yields a stub that names the platform", async () =
 		() => backend.listInstalledApps(),
 		() => backend.listSteamGames(),
 		() => backend.listMonitors(),
+		() => backend.findAppIcon("anything"),
 	];
 
 	for (const run of operations) {
@@ -53,6 +54,7 @@ test("every backend exposes the whole operation set", () => {
 			"listInstalledApps",
 			"listSteamGames",
 			"listMonitors",
+			"findAppIcon",
 		]) {
 			assert.equal(
 				typeof (backend as unknown as Record<string, unknown>)[op],

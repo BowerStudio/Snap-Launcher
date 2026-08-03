@@ -75,6 +75,37 @@ export type RunningApp = { name: string; title: string; path: string | null; dis
 export type InstalledApp = { name: string; path: string };
 
 /**
+ * Longest edge, in pixels, of the PNG a backend renders an app icon into.
+ *
+ * 144 is the largest key bitmap any Stream Deck draws, so nothing visible is
+ * lost by capping here — and the PNG is persisted in the key's settings so it
+ * can be re-applied without touching the disk again, which makes its size worth
+ * minding.
+ */
+export const ICON_MAX_PX = 144;
+
+/**
+ * An application's own icon, found on disk and converted to something Stream
+ * Deck can render: a shipped .ico on Windows, the bundle's .icns on macOS.
+ */
+export type AppIcon = {
+	/** Absolute path of the icon file it was read from, for the PI's status line. */
+	sourcePath: string;
+	/** Pixel size of the frame that was used, before the downscale to ICON_MAX_PX. */
+	width: number;
+	height: number;
+	/** The icon as a PNG data URI, ready to hand to Stream Deck's setImage(). */
+	image: string;
+};
+
+/**
+ * The outcome of looking for an application's icon. Finding none is a normal
+ * result rather than a failure — plenty of apps ship no icon file at all — so
+ * it carries its own explanation instead of an error.
+ */
+export type AppIconResult = { found: true; icon: AppIcon } | { found: false; reason: string };
+
+/**
  * A "steam:<appid>" appPath resolved against the local Steam installation, and
  * passed to the platform scripts alongside the config. Resolved per operation
  * rather than persisted: a game can be moved between library folders, updated,

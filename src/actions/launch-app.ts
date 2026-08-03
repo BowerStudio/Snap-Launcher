@@ -11,7 +11,7 @@ import type { JsonValue } from "@elgato/utils";
 import { getBackend } from "../platform";
 import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
-import { applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
+import { applyAutoIcon, applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
 
 const logger = streamDeck.logger.createScope("LaunchApp");
 
@@ -53,16 +53,31 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			await ev.action.setSettings(seeded);
 		}
 
-		// Plugin-set titles don't survive Stream Deck restarts; re-apply ours.
-		// Stream Deck ignores this whenever the user has typed a custom Title.
-		if (ev.action.isKey() && settings.autoTitle) {
-			await ev.action.setTitle(settings.autoTitle);
+		// Plugin-set titles and images don't survive Stream Deck restarts;
+		// re-apply ours. Stream Deck ignores either one whenever the user has
+		// set a Title or an image of their own.
+		if (ev.action.isKey()) {
+			if (settings.autoTitle) {
+				await ev.action.setTitle(settings.autoTitle);
+			}
+			if (settings.autoImage) {
+				await ev.action.setImage(settings.autoImage);
+			}
 		}
+
+		// A key configured before the plugin looked for app icons has never had
+		// one found; do that once, without holding up the rest of the keys
+		// appearing. Keys that have been looked up already return immediately.
+		void applyAutoIcon(ev.action, seeded);
 	}
 
-	/** Auto-title the key with the app's name when a different app is picked. */
+	/**
+	 * Auto-title the key with the app's name, and set its image to the app's
+	 * own icon, when a different app is picked.
+	 */
 	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<LaunchSettings>): Promise<void> {
 		await applyAutoTitle(ev);
+		await applyAutoIcon(ev.action, ev.payload.settings);
 	}
 
 	/** Launch or focus the app, then move its window to the saved rectangle. */
