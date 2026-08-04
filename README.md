@@ -42,7 +42,7 @@ Two notes on how the macOS side behaves:
 3. In the **Window position** section, pick a positioning mode — or leave it and click **Capture** with the app's window arranged how you like it.
 4. Press the key. If the app is already running its window is focused and moved into place; otherwise it's launched, the plugin waits for its window, then positions it.
 
-The settings panel is organised into four sections:
+The settings panel is organised into five sections:
 
 | Section                        | What's in it                                                                                             |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
@@ -61,7 +61,7 @@ The **Choose from** selector switches between four ways of picking an app. All f
 - **Steam games** — every game installed in your Steam libraries. See [Steam games](#steam-games).
 - **Browse for a file** — point straight at an `.exe`, `.lnk`, `.bat`, or `.cmd` on Windows, or an `.app` bundle on macOS.
 
-Picking an app also sets the key's title to the app's name (e.g. "WhatsApp"). Anything you type in Stream Deck's own **Title** field always takes precedence.
+Picking an app also sets the key's title to the app's name (e.g. "WhatsApp") and gives it the app's own icon — nothing to configure. This works for classic apps, Steam games, and (Windows only, since Store apps don't exist on macOS) Microsoft Store apps, whose icon comes from the artwork the app's package declares rather than from an executable. Anything you type in Stream Deck's own **Title** field always takes precedence over the auto-title, and dropping your own image on the key always wins over the auto-icon.
 
 On macOS an app is remembered by its **bundle identifier** wherever possible, so a key keeps working after the app is updated, renamed, or moved between `/Applications` and `~/Applications`.
 
@@ -184,7 +184,8 @@ Both platforms follow the same shape: each key press runs **one** short-lived sc
 ## Project layout
 
 ```
-StreamDeckWindowResize\
+Snap-Launcher\
+├── dev.ps1                               the dev workflow wrapper (build, link, watch, pack)
 ├── src\                                  TypeScript plugin source
 │   ├── plugin.ts                         entry point, registers the actions
 │   ├── settings.ts                       key settings types + normalization/migration
@@ -196,7 +197,7 @@ StreamDeckWindowResize\
 │   │   ├── windows\                      PowerShell script builders + runner
 │   │   └── macos\                        osascript (JXA) script builders + runner
 │   └── actions\                          launch-app.ts, close-app.ts, pickers.ts (shared PI dropdowns)
-├── tests\                                node:test suite (zone math, monitors, settings, Steam)
+├── tests\                                node:test suite (zone math, monitors, settings, Steam, icons)
 ├── com.bowerstudio.snap-launcher.sdPlugin\   the plugin bundle Stream Deck loads
 │   ├── manifest.json                     plugin metadata (name, version, UUID)
 │   ├── ui\launch.html                    Property Inspector (key settings UI)
@@ -208,7 +209,9 @@ StreamDeckWindowResize\
 
 ## Development
 
-Prerequisites: Windows 10/11, Stream Deck software 7.1+, and Node.js 24+. (The Elgato CLI is also needed, but `dev.ps1` installs it for you when missing.)
+Prerequisites: Stream Deck software 7.1+ and Node.js 24+. (The Elgato CLI is also needed, but `dev.ps1` installs it for you when missing.)
+
+**Development is Windows-based.** The plugin itself runs on both platforms, and `npm run build` works anywhere, but [`dev.ps1`](dev.ps1) is a PowerShell script and the test suite deliberately spawns real `powershell.exe` and asserts against the machine's actual monitors — so `npm test` passes only on Windows.
 
 ### The easy way: dev.ps1
 
@@ -249,7 +252,17 @@ Run the tests with:
 npm test
 ```
 
-The suite runs the plugin's actual embedded PowerShell (zone math against real work-area rectangles, live monitor enumeration, settings migration), so it takes ~20 seconds and must run on Windows. The `tests/**/*.test.ts` glob in the test script is deliberate — `node --test tests/` (bare directory) does not work here.
+The suite runs the plugin's actual embedded PowerShell (zone math against real work-area rectangles, live monitor enumeration, settings migration, icon extraction), so it takes ~20 seconds and must run on Windows. The `tests/**/*.test.ts` glob in the test script is deliberate — `node --test tests/` (bare directory) does not work here.
+
+Lint and formatting:
+
+```bash
+npm run lint          # ESLint
+npm run format        # Prettier, rewrites files in place
+npm run format:check  # Prettier, verifies without writing
+```
+
+There is no `typecheck` script — TypeScript runs only as part of `npm run build`, and only over `src/`.
 
 Logs live in `com.bowerstudio.snap-launcher.sdPlugin/logs/`.
 
@@ -268,11 +281,13 @@ This produces `com.bowerstudio.snap-launcher.streamDeckPlugin` in the project ro
 Before publishing:
 
 1. Bump the version in `com.bowerstudio.snap-launcher.sdPlugin/manifest.json` (`Version`, four segments, e.g. `1.2.0.0`) and keep `package.json`'s `version` in step.
-2. Replace the placeholder UUID `com.bowerstudio.snap-launcher` with your own reverse-DNS identifier **everywhere** — it is permanent once published:
-    - `manifest.json` → `UUID` and the action's `UUID`
-    - `src/actions/launch-app.ts` → the `@action({ UUID: … })` decorator
-    - the `.sdPlugin` folder name, `rollup.config.mjs` → `sdPlugin` constant, and the `streamdeck restart` name in `package.json`
-3. Set `Nodejs.Debug` to `"disabled"` in `manifest.json` and lower the log level in `src/plugin.ts` (it's `debug` for development).
+2. Replace the placeholder UUID `com.bowerstudio.snap-launcher` with your own reverse-DNS identifier **everywhere** — it is permanent once published. It appears in six places, and missing one leaves the plugin unloadable:
+    - `manifest.json` → the top-level `UUID`, **and** both actions' `UUID` (launch and close)
+    - `src/actions/launch-app.ts` and `src/actions/close-app.ts` → the `@action({ UUID: … })` decorator in each
+    - the `.sdPlugin` folder name
+    - `rollup.config.mjs` → the `sdPlugin` constant
+    - `package.json` → the `streamdeck restart` name in the `watch` script
+3. Set `Nodejs.Debug` to `"disabled"` in `manifest.json`. (The log level in `src/plugin.ts` is already `"info"` and needs no change.)
 4. Test on a real device — at minimum the key press (launch, focus, reposition) for a zone key and a custom key, plus the Capture button, for a classic app, a Store app, and a Steam game (both with and without positioning).
 
 ## Troubleshooting

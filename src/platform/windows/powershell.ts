@@ -1036,11 +1036,15 @@ function Get-IconCandidates([string]$root, [string]$appName, [string]$filter) {
 #
 # The limit matters: the executable's own icon is appended after these, and it
 # has to stay within the number of candidates actually tried.
-function Add-IconCandidates($list, $paths, [bool]$fromExe, [int]$limit) {
+#
+# $rawImage marks a bare image file (a Store app-list asset) that must skip
+# .ico container parsing entirely; every non-Store caller omits it and gets
+# the default $false.
+function Add-IconCandidates($list, $paths, [bool]$fromExe, [int]$limit, [bool]$rawImage) {
     $added = 0
     foreach ($p in @($paths)) {
         if (-not $p) { continue }
-        $list.Add([pscustomobject]@{ Path = [string]$p; FromExe = $fromExe })
+        $list.Add([pscustomobject]@{ Path = [string]$p; FromExe = $fromExe; RawImage = $rawImage })
         $added++
         if ($added -ge $limit) { break }
     }
@@ -1130,34 +1134,17 @@ function Select-IconFrame([byte[]]$bytes) {
     return $best
 }
 
-# Renders one frame to a PNG, downscaled to fit $maxPx. A PNG-compressed frame
-# already is a PNG file and is decoded as one; a DIB frame goes through
-# System.Drawing.Icon, which recombines its colour plane and transparency mask
-# the way Windows does. The canvas is 32bpp ARGB and cleared to transparent so
-# an icon's rounded edges stay transparent on the key.
-#
-# Works from bytes rather than a path, because an icon read out of an
-# executable's resources never had a file of its own.
-function ConvertTo-IconPng([byte[]]$bytes, $frame, [int]$maxPx) {
-    $source = $null
-    $frameStream = $null
+# Downscales a decoded System.Drawing image onto a 32bpp ARGB transparent
+# canvas so an icon's rounded edges (or a Store asset's plated background)
+# stay transparent on the key, and returns it as a base64 PNG. Shared by
+# ConvertTo-IconPng and ConvertTo-ScaledImagePng, which differ only in how
+# $source is decoded in the first place. Width/Height are the source's own
+# dimensions, before the downscale — callers show that as the icon's size.
+function Get-ScaledPng($source, [int]$maxPx) {
     $canvas = $null
     $graphics = $null
     $output = $null
     try {
-        if ($frame.IsPng) {
-            $frameStream = New-Object System.IO.MemoryStream
-            $frameStream.Write($bytes, $frame.Offset, $frame.Length)
-            $frameStream.Position = 0
-            $source = [System.Drawing.Image]::FromStream($frameStream)
-        } else {
-            Initialize-IconResources
-            [byte[]]$frameBytes = New-Object byte[] $frame.Length
-            [Array]::Copy($bytes, $frame.Offset, $frameBytes, 0, $frame.Length)
-            $source = [SnapIcons.IconResources]::DecodeFrame($frameBytes, $frame.Width, $frame.Height)
-            if ($null -eq $source) { throw 'The icon frame could not be decoded.' }
-        }
-
         $width = $source.Width
         $height = $source.Height
         $scale = 1.0
@@ -1180,10 +1167,157 @@ function ConvertTo-IconPng([byte[]]$bytes, $frame, [int]$maxPx) {
     } finally {
         if ($graphics) { $graphics.Dispose() }
         if ($canvas) { $canvas.Dispose() }
-        if ($source) { $source.Dispose() }
-        if ($frameStream) { $frameStream.Dispose() }
         if ($output) { $output.Dispose() }
     }
+}
+
+# Renders one .ico frame to a PNG, downscaled to fit $maxPx. A PNG-compressed
+# frame already is a PNG file and is decoded as one; a DIB frame goes through
+# System.Drawing.Icon, which recombines its colour plane and transparency mask
+# the way Windows does.
+#
+# Works from bytes rather than a path, because an icon read out of an
+# executable's resources never had a file of its own.
+function ConvertTo-IconPng([byte[]]$bytes, $frame, [int]$maxPx) {
+    $source = $null
+    $frameStream = $null
+    try {
+        if ($frame.IsPng) {
+            $frameStream = New-Object System.IO.MemoryStream
+            $frameStream.Write($bytes, $frame.Offset, $frame.Length)
+            $frameStream.Position = 0
+            $source = [System.Drawing.Image]::FromStream($frameStream)
+        } else {
+            Initialize-IconResources
+            [byte[]]$frameBytes = New-Object byte[] $frame.Length
+            [Array]::Copy($bytes, $frame.Offset, $frameBytes, 0, $frame.Length)
+            $source = [SnapIcons.IconResources]::DecodeFrame($frameBytes, $frame.Width, $frame.Height)
+            if ($null -eq $source) { throw 'The icon frame could not be decoded.' }
+        }
+        return (Get-ScaledPng $source $maxPx)
+    } finally {
+        if ($source) { $source.Dispose() }
+        if ($frameStream) { $frameStream.Dispose() }
+    }
+}
+
+# Decodes a bare image file (a Store app's app-list PNG; never an .ico
+# container) and downscales it the same way ConvertTo-IconPng does. Returns
+# $null rather than throwing when the file is missing or unreadable, so the
+# candidate loop can pass over it like any other failed candidate.
+function ConvertTo-ScaledImagePng([string]$path, [int]$maxPx) {
+    $stream = $null
+    $source = $null
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        if ($null -eq $bytes -or $bytes.Length -eq 0) { return $null }
+        $stream = New-Object System.IO.MemoryStream
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Position = 0
+        $source = [System.Drawing.Image]::FromStream($stream)
+        return (Get-ScaledPng $source $maxPx)
+    } catch {
+        return $null
+    } finally {
+        if ($source) { $source.Dispose() }
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
+# A package manifest names its app-list artwork by a logical path
+# (VisualElements.Square44x44Logo, e.g. "Assets\\App.png") that never exists on
+# disk verbatim: MakePri writes qualifier-suffixed siblings instead
+# ("App.targetsize-256_altform-unplated.png", "App.scale-200.png", ...), and
+# the shell picks one at render time. This ranks every sibling and returns
+# them best first, so a caller can queue more than one and let a file that
+# fails to decode fall through to the next rather than costing the whole
+# lookup: the largest unplated targetsize (a transparent glyph, matching every
+# other icon this plugin shows), then the largest plated targetsize, then the
+# largest scale variant, then the unqualified name if it happens to exist.
+#
+# High-contrast and light-theme qualifiers are excluded outright — matched by
+# substring so their order in the filename never matters. "contrast-standard"
+# is deliberately NOT among them: in MakePri's qualifier vocabulary "standard"
+# is the ordinary asset and "black"/"white" are the high-contrast ones, so
+# excluding it would discard correct artwork from a package that ships only
+# contrast-qualified variants. A blacklist is also
+# not the whole fix: File Explorer ships a "_contrast-black" sibling at the
+# exact same rank and size as its correct "_devicefamily-colorfulunplated"
+# counterpart, and which one wins a tie must not depend on Get-ChildItem's
+# filesystem-order luck. Among equal rank and size, the candidate with fewer
+# underscore-separated qualifier segments — the plainer filename — wins; that
+# also survives a qualifier nobody has seen yet, which a blacklist by
+# construction cannot. Anything still tied breaks on ordinal name so the
+# result is deterministic.
+#
+# $logicalPath is third-party input straight out of an AppxManifest.xml this
+# plugin does not control. Join-Path tolerates any character, but .NET
+# Framework's System.IO.Path helpers throw ArgumentException on one like "|"
+# that Join-Path let through uncomplained, so every one of them is guarded:
+# a malformed path is an empty result, never an exception that would turn an
+# ordinary miss into ok:false.
+$script:LogoQualifierBlacklist = @('altform-lightunplated', 'contrast-black', 'contrast-white', 'theme-light')
+$script:LogoImageExtensions = @('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.tif')
+
+function Get-LogoAssetCandidates([string]$installLocation, [string]$logicalPath) {
+    if (-not $installLocation -or -not $logicalPath) { return @() }
+
+    $dir = $null
+    $base = $null
+    $exact = $null
+    try {
+        $full = Join-Path $installLocation $logicalPath
+        $dir = [System.IO.Path]::GetDirectoryName($full)
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($full)
+        $exact = [System.IO.Path]::GetFileName($full)
+    } catch { return @() }
+    if (-not $dir -or -not $base) { return @() }
+    try { if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return @() } } catch { return @() }
+
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter ($base + '.*') -File -ErrorAction SilentlyContinue)
+    if ($files.Count -eq 0) { return @() }
+
+    $ranked = @($files | ForEach-Object {
+        if ($script:LogoImageExtensions -notcontains $_.Extension.ToLower()) { return }
+        $lower = $_.Name.ToLower()
+        foreach ($bad in $script:LogoQualifierBlacklist) { if ($lower.Contains($bad)) { return } }
+
+        $rank = -1
+        $size = 0
+        $m = [System.Text.RegularExpressions.Regex]::Match($lower, 'targetsize-(\\d+)')
+        if ($m.Success) {
+            $size = [int]$m.Groups[1].Value
+            if ($lower.Contains('altform-unplated')) { $rank = 3 } else { $rank = 2 }
+        } else {
+            $m = [System.Text.RegularExpressions.Regex]::Match($lower, 'scale-(\\d+)')
+            if ($m.Success) {
+                $size = [int]$m.Groups[1].Value
+                $rank = 1
+            } elseif ($_.Name -eq $exact) {
+                $rank = 0
+                $size = 0
+            }
+        }
+        if ($rank -lt 0) { return }
+
+        # Every underscore past the base name is one more qualifier segment
+        # ("_altform-unplated", "_devicefamily-colorfulunplated", ...); fewer
+        # of them is the plainer, more broadly-applicable asset.
+        $qualifiers = ([System.IO.Path]::GetFileNameWithoutExtension($_.Name).Split('_')).Length
+
+        [pscustomobject]@{
+            Path = $_.FullName
+            Name = $_.Name
+            Rank = $rank
+            Size = $size
+            Qualifiers = $qualifiers
+        }
+    })
+    if ($ranked.Count -eq 0) { return @() }
+
+    return @($ranked |
+        Sort-Object @{ Expression = 'Rank'; Descending = $true }, @{ Expression = 'Size'; Descending = $true }, Qualifiers, Name |
+        ForEach-Object { $_.Path })
 }
 `;
 
@@ -1226,10 +1360,44 @@ try {
         } else {
             $reason = '"' + $steam.name + '" is not installed in any Steam library.'
         }
-    } elseif (Get-TargetAumid $appPath) {
+    } elseif ($aumid = Get-TargetAumid $appPath) {
         # Store apps are addressed by AppUserModelId, so there is no executable
-        # to read; their artwork is PNG assets described by the package manifest.
-        $reason = 'Store apps carry no icon this can read — the key keeps its own image.'
+        # to read; their app-list artwork is a bare PNG named by the package
+        # manifest's VisualElements, read straight off disk instead.
+        $pkg = Get-PackageForAumid $aumid
+        if (-not $pkg -or -not $pkg.InstallLocation) {
+            $reason = 'No installed package could be found for "' + $aumid + '".'
+        } else {
+            $bang = $aumid.IndexOf('!')
+            $appId = $aumid.Substring($bang + 1)
+            $apps = Get-PackageApplications $pkg
+            $app = $apps | Where-Object { $_.Id -eq $appId } | Select-Object -First 1
+            if (-not $app) { $app = $apps | Select-Object -First 1 }
+
+            $sq44 = $null
+            $sq150 = $null
+            if ($app -and $app.VisualElements) {
+                $sq44 = [string]$app.VisualElements.Square44x44Logo
+                $sq150 = [string]$app.VisualElements.Square150x150Logo
+            }
+
+            if (-not $sq44 -and -not $sq150) {
+                $reason = 'The manifest for "' + $aumid + '" names no Square44x44Logo or Square150x150Logo artwork.'
+            } else {
+                # Square44x44Logo is the app-list glyph shown everywhere Windows
+                # lists installed apps. Several of its ranked variants are
+                # queued, not just the top one, so a variant that fails to
+                # decode (a truncated file, say) falls through to the next
+                # rather than costing the whole lookup; Square150x150Logo (the
+                # Start tile) is queued last of all, the fallback for when none
+                # of those decode either.
+                Add-IconCandidates $candidates (Get-LogoAssetCandidates $pkg.InstallLocation $sq44) $false 3 $true
+                Add-IconCandidates $candidates (Get-LogoAssetCandidates $pkg.InstallLocation $sq150) $false 1 $true
+                if ($candidates.Count -eq 0) {
+                    $reason = 'No Square44x44Logo or Square150x150Logo asset was found on disk for "' + $aumid + '".'
+                }
+            }
+        }
     } else {
         # A Start Menu shortcut's own icon comes first: whoever packaged the app
         # chose it, so it beats anything deduced from the folder.
@@ -1256,17 +1424,26 @@ try {
     $failure = $null
     foreach ($candidate in @($candidates | Select-Object -First 9)) {
         try {
-            $bytes = Get-CandidateIcon $candidate
-            if ($null -eq $bytes) {
-                $failure = '"' + $candidate.Path + '" carries no icon of its own.'
-                continue
+            $png = $null
+            if ($candidate.RawImage) {
+                # A Store asset is a bare PNG, not an .ico container, so it skips
+                # Get-CandidateIcon/Select-IconFrame entirely.
+                $png = ConvertTo-ScaledImagePng $candidate.Path ${ICON_MAX_PX}
+                if (-not $png) { $failure = '"' + $candidate.Path + '" is not a readable image file.' }
+            } else {
+                $bytes = Get-CandidateIcon $candidate
+                if ($null -eq $bytes) {
+                    $failure = '"' + $candidate.Path + '" carries no icon of its own.'
+                } else {
+                    $frame = Select-IconFrame $bytes
+                    if (-not $frame) {
+                        $failure = '"' + $candidate.Path + '" is not a readable icon file.'
+                    } else {
+                        $png = ConvertTo-IconPng $bytes $frame ${ICON_MAX_PX}
+                    }
+                }
             }
-            $frame = Select-IconFrame $bytes
-            if (-not $frame) {
-                $failure = '"' + $candidate.Path + '" is not a readable icon file.'
-                continue
-            }
-            $png = ConvertTo-IconPng $bytes $frame ${ICON_MAX_PX}
+            if (-not $png) { continue }
             $out = @{ ok = $true; found = $true; path = $candidate.Path; width = $png.Width; height = $png.Height; png = $png.Base64 }
             Write-Output (ConvertTo-Json -InputObject $out -Compress)
             exit 0

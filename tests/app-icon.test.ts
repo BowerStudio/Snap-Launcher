@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -7,7 +7,7 @@ import { deflateSync } from "node:zlib";
 
 import { toAppIconResult, type RawAppIcon } from "../src/platform/icons.ts";
 import { ICON_MAX_PX } from "../src/platform/types.ts";
-import { buildAppIconScript, runPowerShell } from "../src/platform/windows/powershell.ts";
+import { buildAppIconScript, ICON_HELPERS, runPowerShell } from "../src/platform/windows/powershell.ts";
 
 /**
  * The icon script is exercised against real .ico files written to a temp
@@ -225,12 +225,289 @@ test("an app with neither an .ico nor an icon in its executable is a miss naming
 	assert.ok((result.reason ?? "").includes("Bare.exe"), `reason should name the file: ${result.reason}`);
 });
 
-test("a Store app is reported as a miss rather than searched", async () => {
-	const result = await findIcon("shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App");
+/* --------------------------- Store (MSIX/UWP) icons -------------------------- */
+
+/**
+ * Notepad has shipped as an MSIX package since Windows 11 and stays installed
+ * on essentially every machine that still has a Notepad at all — about the
+ * closest thing to a guaranteed Store app to test against. These tests run
+ * against Notepad's real, live assets to cover what genuinely needs a package
+ * registered with the OS — an AUMID resolving through Get-AppxPackage to a
+ * real install location and a real manifest, and real bytes on disk actually
+ * decoding to a PNG — asserting on structure (found, a real .png on disk,
+ * capped at ICON_MAX_PX) rather than on which exact targetsize wins, which
+ * could vary by Windows/Notepad version.
+ *
+ * The ranking itself needs none of that. Get-LogoAssetCandidates (exported
+ * below as part of ICON_HELPERS) is a pure function over file names in a
+ * directory — it never calls Get-AppxPackage — so every tier, including the
+ * light/high-contrast exclusions, is driven directly through
+ * logoAssetCandidates() against synthetic, empty sibling files that reproduce
+ * exactly the qualifier suffixes MakePri writes. Those cases follow the
+ * Notepad tests below.
+ */
+const STORE_APP = "shell:AppsFolder\\Microsoft.WindowsNotepad_8wekyb3d8bbwe!App";
+
+test("a Store app's icon is read from the package's own artwork rather than skipped", async () => {
+	const result = await findIcon(STORE_APP);
+
+	assert.equal(result.ok, true);
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.match(result.path ?? "", /\.png$/i);
+	assert.ok(existsSync(result.path ?? ""), `expected a real asset file on disk: ${result.path}`);
+});
+
+test("a Store app's icon is downscaled to the key size just like any other icon", async () => {
+	const result = await findIcon(STORE_APP);
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	const rendered = pngDimensions(result.png as string);
+	assert.ok(
+		rendered.width <= ICON_MAX_PX && rendered.height <= ICON_MAX_PX,
+		`unexpected size ${rendered.width}x${rendered.height}`,
+	);
+	assert.equal(rendered.width, rendered.height, "a Square44x44Logo asset should stay square after scaling");
+});
+
+test("a Store app's icon is never taken from a lightunplated variant", async () => {
+	const result = await findIcon(STORE_APP);
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.ok(!(result.path ?? "").toLowerCase().includes("lightunplated"), `unexpected path: ${result.path}`);
+});
+
+test("a Store app with no matching package installed names the AUMID in its reason, not just any reason", async () => {
+	// The pre-change give-up branch produced a non-empty reason for any AUMID
+	// at all — reverting the whole feature would still satisfy a bare
+	// "length > 0" check. Only text naming the AUMID proves the new lookup
+	// actually ran and actually failed to find this package.
+	const aumid = "Contoso.NotInstalledApp_1234567890abc!App";
+	const result = await findIcon(`shell:AppsFolder\\${aumid}`);
 
 	assert.equal(result.ok, true);
 	assert.equal(result.found, false);
-	assert.match(result.reason ?? "", /Store apps/);
+	assert.ok((result.reason ?? "").includes(aumid), `reason should name the AUMID: ${result.reason}`);
+});
+
+/**
+ * Embeds a value as a single-quoted PowerShell string literal ('' escapes an
+ * embedded quote) — for scripts too small to be worth psJson's
+ * ConvertFrom-Json round trip.
+ */
+function psLiteral(value: string): string {
+	return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Drives the exported Get-LogoAssetCandidates directly against a synthetic
+ * "Assets" folder of empty, same-named sibling files — the shape MakePri
+ * actually writes for a manifest's logical artwork path (a bare
+ * "Square44x44Logo.png" becomes "Square44x44Logo.targetsize-256_altform-
+ * unplated.png" and its siblings). The files are never read for content, only
+ * ranked by name, so they can stay empty.
+ *
+ * Returns every qualifying candidate's bare file name, ranked best first —
+ * the same shape Get-LogoAssetCandidates itself returns (an empty array, not
+ * $null, when nothing qualifies).
+ */
+function logoAssetCandidates(
+	t: { after(fn: () => void): void },
+	files: string[],
+	logicalPath = "Assets\\Square44x44Logo.png",
+): Promise<string[]> {
+	const dir = mkdtempSync(path.join(tmpdir(), "snap-logo-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const assetsDir = path.join(dir, "Assets");
+	mkdirSync(assetsDir, { recursive: true });
+	for (const name of files) {
+		writeFileSync(path.join(assetsDir, name), Buffer.alloc(0));
+	}
+
+	// $ErrorActionPreference matches the real script's PROLOG. Without it a
+	// .NET method exception inside the helper is only statement-terminating:
+	// the assignment is skipped, execution carries on, and an empty result
+	// comes back indistinguishable from a clean "nothing qualified". That
+	// ambiguity silently made the illegal-character case below unfailable, so
+	// the outcome is reported as an envelope and a throw is surfaced here.
+	const script = `
+${ICON_HELPERS}
+$ErrorActionPreference = 'Stop'
+try {
+    $picked = @(Get-LogoAssetCandidates ${psLiteral(dir)} ${psLiteral(logicalPath)})
+    $names = @($picked | ForEach-Object { [System.IO.Path]::GetFileName([string]$_) })
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $true; names = $names } -Compress)
+} catch {
+    Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
+}
+`;
+	return runPowerShell<{ ok: boolean; names?: string[]; error?: string }>(script, 30_000).then((r) => {
+		if (!r.ok) throw new Error(`Get-LogoAssetCandidates threw: ${r.error}`);
+		return r.names ?? [];
+	});
+}
+
+const LOGO_RANKING_CASES: { name: string; files: string[]; order: string[] }[] = [
+	{
+		name: "the largest unplated targetsize beats a plated targetsize, a scale variant, and the bare logical file",
+		files: [
+			"Square44x44Logo.png",
+			"Square44x44Logo.scale-100.png",
+			"Square44x44Logo.targetsize-256.png",
+			"Square44x44Logo.targetsize-256_altform-unplated.png",
+		],
+		order: [
+			"Square44x44Logo.targetsize-256_altform-unplated.png",
+			"Square44x44Logo.targetsize-256.png",
+			"Square44x44Logo.scale-100.png",
+			"Square44x44Logo.png",
+		],
+	},
+	{
+		// Thunderbolt Control Center is a real package that ships exactly this
+		// reversed order, so this is not a hypothetical shape.
+		name: "the unplated qualifier is recognised however its qualifiers are ordered, as Thunderbolt Control Center's own assets are",
+		files: ["Square44x44Logo.altform-unplated_targetsize-256.png", "Square44x44Logo.targetsize-256.png"],
+		order: ["Square44x44Logo.altform-unplated_targetsize-256.png", "Square44x44Logo.targetsize-256.png"],
+	},
+	{
+		name: "a lightunplated variant is never a candidate, so a smaller unplated one wins by default",
+		files: [
+			"Square44x44Logo.targetsize-48_altform-unplated.png",
+			"Square44x44Logo.targetsize-256_altform-lightunplated.png",
+		],
+		order: ["Square44x44Logo.targetsize-48_altform-unplated.png"],
+	},
+	{
+		// An empty expectation is a weak pin on its own — before
+		// Get-LogoAssetCandidates exists at all, a call to it fails outright and
+		// the harness below reports that the same way as a real empty result.
+		// The other cases in this table, which expect a specific named winner,
+		// are what actually distinguish "not implemented yet" from "correctly
+		// implemented".
+		name: "an asset that exists only as a lightunplated variant yields no candidates at all",
+		files: ["Square44x44Logo.targetsize-256_altform-lightunplated.png"],
+		order: [],
+	},
+	{
+		name: "a plated targetsize beats a larger scale variant",
+		files: ["Square44x44Logo.targetsize-16.png", "Square44x44Logo.scale-200.png"],
+		order: ["Square44x44Logo.targetsize-16.png", "Square44x44Logo.scale-200.png"],
+	},
+	{
+		name: "a scale variant beats the bare unqualified logical file",
+		files: ["Square44x44Logo.scale-100.png", "Square44x44Logo.png"],
+		order: ["Square44x44Logo.scale-100.png", "Square44x44Logo.png"],
+	},
+];
+
+for (const logoCase of LOGO_RANKING_CASES) {
+	test(`Get-LogoAssetCandidates ranks by tier before size: ${logoCase.name}`, async (t) => {
+		assert.deepEqual(await logoAssetCandidates(t, logoCase.files), logoCase.order);
+	});
+}
+
+test("a lightunplated file is excluded outright, not merely outranked, even with no unplated variant to beat it", async (t) => {
+	// The discriminating case for the lightunplated guard: on this machine,
+	// every installed package that ships a lightunplated asset also ships an
+	// unplated one, so removing the guard changes no real package's pick.
+	// This fixture ships no unplated variant at all, so only the guard stops
+	// the larger lightunplated file from being the sole, winning candidate.
+	const names = await logoAssetCandidates(t, [
+		"Square44x44Logo.targetsize-256_altform-lightunplated.png",
+		"Square44x44Logo.targetsize-48.png",
+	]);
+	assert.deepEqual(names, ["Square44x44Logo.targetsize-48.png"]);
+});
+
+test("a high-contrast or light-theme variant is excluded from the ranking however its qualifiers are ordered", async (t) => {
+	// None of these carry "altform-lightunplated", so the older guard alone
+	// lets all of them through. This pins the broader exclusion list —
+	// contrast-black, contrast-white (reversed order, to prove qualifier
+	// position doesn't matter), and theme-light — mirroring File Explorer's
+	// real Square44x44Logo assets, where the largest unplated candidates are
+	// exactly these contrast/plain siblings tied on rank and size.
+	const names = await logoAssetCandidates(t, [
+		"Square44x44Logo.targetsize-256_altform-unplated_contrast-black.png",
+		"Square44x44Logo.contrast-white_targetsize-256_altform-unplated.png",
+		"Square44x44Logo.targetsize-256_altform-unplated_theme-light.png",
+		"Square44x44Logo.targetsize-16_altform-unplated.png",
+	]);
+	assert.deepEqual(names, ["Square44x44Logo.targetsize-16_altform-unplated.png"]);
+});
+
+test("a standard-contrast variant is kept, being the ordinary asset rather than a high-contrast one", async (t) => {
+	// "contrast-standard" reads like a sibling of contrast-black/contrast-white
+	// and was briefly excluded alongside them. It is the opposite: in MakePri's
+	// qualifier vocabulary "standard" is the normal-contrast asset, so a
+	// package shipping only contrast-qualified variants would resolve to no
+	// icon at all. Nothing installed on this machine is shaped that way, which
+	// is exactly why the mistake needs a synthetic pin.
+	const names = await logoAssetCandidates(t, [
+		"Square44x44Logo.targetsize-256_altform-unplated_contrast-standard.png",
+		"Square44x44Logo.targetsize-48_altform-unplated.png",
+	]);
+	assert.deepEqual(names, [
+		"Square44x44Logo.targetsize-256_altform-unplated_contrast-standard.png",
+		"Square44x44Logo.targetsize-48_altform-unplated.png",
+	]);
+});
+
+test("among variants tied on rank and size, the one with fewer qualifiers wins", async (t) => {
+	// Both are rank 3 (unplated) at size 256, and neither is excluded, so a
+	// ranking that only ever compares rank then size has no way to prefer
+	// either one. This pins the intended tiebreak: the plainer name (fewer
+	// underscore-separated qualifiers) sorts first regardless of what the
+	// extra qualifier says or where it falls in the name.
+	const names = await logoAssetCandidates(t, [
+		"Square44x44Logo.lang-en-us_targetsize-256_altform-unplated.png",
+		"Square44x44Logo.targetsize-256_altform-unplated.png",
+	]);
+	assert.deepEqual(names, [
+		"Square44x44Logo.targetsize-256_altform-unplated.png",
+		"Square44x44Logo.lang-en-us_targetsize-256_altform-unplated.png",
+	]);
+});
+
+test("a non-image sibling is excluded from the ranking however well its qualifiers match", async (t) => {
+	// An .xml sibling beside the real assets (packages ship plenty of
+	// non-image files matching an asset's base name) must never be handed to
+	// the PNG/JPEG decoder downstream just because its qualifiers look like
+	// the largest, best-ranked candidate.
+	const names = await logoAssetCandidates(t, [
+		"Square44x44Logo.targetsize-256_altform-unplated.xml",
+		"Square44x44Logo.targetsize-48_altform-unplated.png",
+	]);
+	assert.deepEqual(names, ["Square44x44Logo.targetsize-48_altform-unplated.png"]);
+});
+
+test("a manifest path with illegal filename characters yields no candidates, not a thrown error", async (t) => {
+	// Reaching this through the full pipeline needs a real package manifest
+	// that names an artwork path with a character like "|", "<", ">" or """ —
+	// not something a test can fabricate for a genuinely installed package.
+	// Get-LogoAssetCandidates is exported precisely so this is reachable
+	// without one: the illegal character used to escape uncaught as a
+	// MethodInvocationException from System.IO.Path, failing the whole script
+	// with ok:false rather than reporting an ordinary miss.
+	//
+	// The empty expectation alone does not pin the guard — an empty directory
+	// yields [] either way. What makes this fail without the guard is the
+	// harness surfacing a thrown helper as a rejection.
+	const names = await logoAssetCandidates(t, [], "Assets\\Bad|Name<tile>.png");
+	assert.deepEqual(names, []);
+});
+
+test("File Explorer's real Square44x44Logo assets never resolve to a high-contrast variant", async () => {
+	// File Explorer ships as an MSIX package on Windows 11, and its
+	// Square44x44Logo set includes contrast-black/contrast-white siblings
+	// tied on rank and size with the plain one — exactly what exposes this
+	// bug: without the fix, ranking falls back to whichever the filesystem
+	// happens to enumerate first among the tied candidates, which is the
+	// contrast-black file, not the plain one a dark Stream Deck key should
+	// show.
+	const result = await findIcon("shell:AppsFolder\\c5e2524a-ea46-4f67-841f-6a9465d9d515_cw5n1h2txyewy!App");
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.ok(!(result.path ?? "").toLowerCase().includes("contrast-"), `unexpected path: ${result.path}`);
 });
 
 test("a file that only pretends to be an .ico is passed over for the next candidate", async (t) => {

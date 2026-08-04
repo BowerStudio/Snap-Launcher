@@ -3,3 +3,6 @@ node_modules/
 com.bowerstudio.snap-launcher.sdPlugin/bin/
 com.bowerstudio.snap-launcher.sdPlugin/logs/
 .DS_Store
+
+# Temporary worktrees Claude Code creates for isolated subagents.
+.claude/worktrees/
