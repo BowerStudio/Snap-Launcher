@@ -8,26 +8,6 @@ to follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Steam games.** A new **Steam games** source in the **Choose from** picker lists every game
-  installed in your Steam libraries — all library folders, not just the one Steam lives in —
-  on both Windows and macOS. It works on _Launch & Position_ and _Close App_ keys alike.
-    - Pressing the key launches the game **through Steam**, exactly like clicking Play: the
-      client starts first if it isn't running, and the game's own launch options, cloud saves,
-      controller config, and overlay all apply. Anything in **Arguments** is passed on top of
-      them. Pointing a key at a game's `.exe` does none of that, and some games refuse to run
-      that way at all.
-    - A key stores the game's **Steam app id**, so it keeps working when the game is updated,
-      verified, or moved to another library folder or drive. A game that has been uninstalled
-      is reported by name rather than failing obscurely.
-    - **Windows are matched by the game's install folder**, since a game's executable name is
-      the developer's choice and can change with an update — the same approach already used for
-      Microsoft Store apps and their package location. Snap zones, captured rectangles, virtual
-      desktops, and closing or force-quitting all work on a game as they do on any other app.
-    - **A game that isn't being positioned is no longer waited for.** Games can spend minutes in
-      Steam's bootstrap, shader compilation, and anti-cheat checks; with **Positioning** set to
-      _Don't move the window_ the key reports success as soon as Steam has been handed the game,
-      instead of failing on a timeout that meant nothing.
-
 - **Automatic key images.** A _Launch & Position_ key now shows the app's own icon, alongside
   the auto-title it already applied. Nothing to configure — pick an app and the key takes its
   icon.
@@ -39,6 +19,11 @@ to follow [Semantic Versioning](https://semver.org/).
       app bundle.
     - **Steam games** are searched in their install folder — any icon file in it, then the icon
       inside whichever of the game's executables its name ties it to.
+    - **Microsoft Store apps** get an automatic icon too, Windows only (Store apps don't exist on
+      macOS). With no executable to search, the icon comes instead from the artwork the app
+      itself declares for its app-list entry — the plain glyph, not a light-background or
+      high-contrast version — so a Store key looks the same as any other. An app that declares no
+      usable artwork is treated like any other miss: the key just keeps its own image.
     - An icon file is only used when its name ties it to the app: the executable's name, a
       conventional one like `app.ico` or `icon.ico`, a shared prefix, or a shared word. Folders
       shared by many programs — `Windows`, `System32`, `Program Files`, and the like — are not
@@ -49,8 +34,7 @@ to follow [Semantic Versioning](https://semver.org/).
       it survives a Stream Deck restart without touching the disk again. **Drop your own image
       on the key and it wins**, exactly as it does over the auto-title.
     - The Property Inspector shows a **Key image** line saying which file the icon came from, or
-      why none was used. Microsoft Store apps are addressed by package identity rather than by
-      a file, so there is nothing to read; those keys keep the action's own image.
+      why none was used.
 
 ### Fixed
 
@@ -81,6 +65,26 @@ to follow [Semantic Versioning](https://semver.org/).
     - You are never asked to approve individual applications: apps are launched with `open` and
       their windows driven through System Events, so macOS asks once rather than
       "Stream Deck wants to control …" for every app you configure.
+
+- **Steam games.** A new **Steam games** source in the **Choose from** picker lists every game
+  installed in your Steam libraries — all library folders, not just the one Steam lives in —
+  on both Windows and macOS. It works on _Launch & Position_ and _Close App_ keys alike.
+    - Pressing the key launches the game **through Steam**, exactly like clicking Play: the
+      client starts first if it isn't running, and the game's own launch options, cloud saves,
+      controller config, and overlay all apply. Anything in **Arguments** is passed on top of
+      them. Pointing a key at a game's `.exe` does none of that, and some games refuse to run
+      that way at all.
+    - A key stores the game's **Steam app id**, so it keeps working when the game is updated,
+      verified, or moved to another library folder or drive. A game that has been uninstalled
+      is reported by name rather than failing obscurely.
+    - **Windows are matched by the game's install folder**, since a game's executable name is
+      the developer's choice and can change with an update — the same approach already used for
+      Microsoft Store apps and their package location. Snap zones, captured rectangles, virtual
+      desktops, and closing or force-quitting all work on a game as they do on any other app.
+    - **A game that isn't being positioned is no longer waited for.** Games can spend minutes in
+      Steam's bootstrap, shader compilation, and anti-cheat checks; with **Positioning** set to
+      _Don't move the window_ the key reports success as soon as Steam has been handed the game,
+      instead of failing on a timeout that meant nothing.
 
 ### Changed
 
