@@ -4,7 +4,7 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] — 2026-08-04
 
 ### Added
 
@@ -44,7 +44,7 @@ to follow [Semantic Versioning](https://semver.org/).
   A **Close App** key in that situation now reports "nothing to close", which is what the
   action means everywhere else, rather than an error.
 
-## [1.2.0] — 2026-08-01
+## [1.2.0] — 01-08-2026
 
 ### Added
 
@@ -99,7 +99,7 @@ to follow [Semantic Versioning](https://semver.org/).
 - Monitors are labelled from their arrangement position rather than their device name, since
   macOS display identifiers are opaque numbers.
 
-## [1.1.0] — 2026-07-30
+## [1.1.0] — 30-07-2026
 
 ### Added
 
