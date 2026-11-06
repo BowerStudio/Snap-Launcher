@@ -4,7 +4,7 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.0] — 2026-11-06
 
 ### Added
 
