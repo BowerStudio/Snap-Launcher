@@ -154,6 +154,7 @@ const allScripts: [string, string][] = [
 		buildLaunchScript(launch({ positionMode: "custom", x: 10, y: 20, width: 800, height: 600 })),
 	],
 	["launch (no positioning)", buildLaunchScript(launch({ positionMode: "none" }))],
+	["launch (minimized)", buildLaunchScript(launch({ positionMode: "minimize" }))],
 	[
 		"launch (with args and filter)",
 		buildLaunchScript(launch({ launchArgs: "--profile work", titleFilter: "Inbox" })),
@@ -294,6 +295,16 @@ test("a minimized window is restored before a rectangle is applied", () => {
 	const move = script.indexOf("win.position = [rect.x, rect.y]");
 	assert.ok(restore !== -1 && move !== -1);
 	assert.ok(restore < move, "the window is un-minimized first");
+});
+
+test("minimize mode launches in the background and minimizes instead of raising", () => {
+	const script = buildLaunchScript(launch({ positionMode: "minimize" }));
+	assert.ok(script.includes("if (CFG.positionMode === 'minimize') args.unshift('-g');"), "open -g keeps focus");
+	const minimize = script.indexOf("setAttrValue(target.win, 'AXMinimized', true)");
+	const raise = script.indexOf("raise(target);", minimize);
+	const ret = script.indexOf("return {", minimize);
+	assert.ok(minimize !== -1, "the window is minimized");
+	assert.ok(ret !== -1 && ret < raise, "and the script returns before the window would be raised");
 });
 
 /* ------------------------------ result parsing ----------------------------- */

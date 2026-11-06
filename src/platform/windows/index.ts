@@ -2,8 +2,9 @@ import path from "node:path";
 
 import type { PlatformBackend } from "../backend";
 import { toAppIconResult, type RawAppIcon } from "../icons";
-import { listSteamGames, parseSteamAppId, resolveSteamTarget } from "../steam";
+import { findSteamClientIcon, listSteamGames, parseSteamAppId, resolveSteamTarget } from "../steam";
 import type {
+	AdminHelperStatus,
 	AppIconResult,
 	CaptureResult,
 	CloseConfig,
@@ -26,9 +27,39 @@ import {
 	buildSteamPathScript,
 	runPowerShell,
 } from "./powershell";
+import {
+	buildElevateScript,
+	buildHelperStatusScript,
+	buildInstallerScript,
+	buildUninstallerScript,
+	buildUserSidScript,
+	describeHelperExit,
+	describeHelperStatus,
+	type ElevateResult,
+	type RawHelperStatus,
+} from "./elevation";
 
 /** Headroom over an operation's own waiting, for interpreter startup and interop. */
 const OVERHEAD_MS = 20_000;
+
+/** Long enough for someone to read and answer the consent prompt. */
+const CONSENT_MS = 5 * 60_000;
+
+async function helperStatus(): Promise<AdminHelperStatus> {
+	return describeHelperStatus(await runPowerShell<RawHelperStatus>(buildHelperStatusScript(), OVERHEAD_MS));
+}
+
+/**
+ * Runs a script elevated and reports the helper's state afterwards. Anything
+ * other than a clean run puts the reason in front of the status, so the PI says
+ * both what went wrong and where things stand now.
+ */
+async function runElevated(script: string, cancelled: string): Promise<AdminHelperStatus> {
+	const result = await runPowerShell<ElevateResult>(buildElevateScript(script), CONSENT_MS);
+	const status = await helperStatus();
+	const problem = !result.ok ? cancelled : describeHelperExit(result.exitCode);
+	return problem ? { ...status, message: `${problem} ${status.message}` } : status;
+}
 
 /** The monitor script predates MonitorEntry.index and does not emit it. */
 type RawMonitor = Omit<MonitorEntry, "index">;
@@ -137,10 +168,29 @@ export const windowsBackend: PlatformBackend = {
 	async findAppIcon(appPath: string): Promise<AppIconResult> {
 		// A game's icon is looked for in its install directory, so the same
 		// Steam resolution the other operations do is needed here too.
-		const steam = parseSteamAppId(appPath) ? resolveSteamTarget(await steamRoots(), appPath) : null;
+		const roots = parseSteamAppId(appPath) ? await steamRoots() : [];
+		const steam = roots.length ? resolveSteamTarget(roots, appPath) : null;
+		// Steam's own icon for the game, when the client has one cached, beats
+		// anything the install folder can offer.
+		const clientIcon = steam ? findSteamClientIcon(roots, steam.appId) : null;
 		// Searching a folder tree is closer to the installed-apps scan than to
 		// the quick window operations, so it gets the same allowance.
-		const raw = await runPowerShell<RawAppIcon>(buildAppIconScript(appPath, steam), 30_000);
+		const raw = await runPowerShell<RawAppIcon>(buildAppIconScript(appPath, steam, clientIcon), 30_000);
 		return toAppIconResult(raw);
+	},
+
+	adminHelperStatus(): Promise<AdminHelperStatus> {
+		return helperStatus();
+	},
+
+	async installAdminHelper(): Promise<AdminHelperStatus> {
+		// Who is asking is read before elevating: the task must belong to this
+		// user even if the prompt is answered with another account's password.
+		const { sid } = await runPowerShell<{ sid: string }>(buildUserSidScript(), OVERHEAD_MS);
+		return runElevated(buildInstallerScript(sid), "Setup was cancelled.");
+	},
+
+	removeAdminHelper(): Promise<AdminHelperStatus> {
+		return runElevated(buildUninstallerScript(), "Removal was cancelled.");
 	},
 };

@@ -37,6 +37,9 @@ test("an unsupported platform yields a stub that names the platform", async () =
 		() => backend.listSteamGames(),
 		() => backend.listMonitors(),
 		() => backend.findAppIcon("anything"),
+		() => backend.adminHelperStatus(),
+		() => backend.installAdminHelper(),
+		() => backend.removeAdminHelper(),
 	];
 
 	for (const run of operations) {
@@ -55,6 +58,9 @@ test("every backend exposes the whole operation set", () => {
 			"listSteamGames",
 			"listMonitors",
 			"findAppIcon",
+			"adminHelperStatus",
+			"installAdminHelper",
+			"removeAdminHelper",
 		]) {
 			assert.equal(
 				typeof (backend as unknown as Record<string, unknown>)[op],
@@ -63,5 +69,17 @@ test("every backend exposes the whole operation set", () => {
 			);
 		}
 		assert.equal(typeof backend.features.virtualDesktop, "boolean", `${backend.platform}.features`);
+	}
+});
+
+test("macOS needs no administrator helper, and says so without failing", async () => {
+	for (const op of [
+		macosBackend.adminHelperStatus,
+		macosBackend.installAdminHelper,
+		macosBackend.removeAdminHelper,
+	]) {
+		const status = await op();
+		assert.equal(status.supported, false);
+		assert.equal(status.installed, false);
 	}
 });

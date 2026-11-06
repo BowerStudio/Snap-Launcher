@@ -1,4 +1,5 @@
 import type {
+	AdminHelperStatus,
 	AppIconResult,
 	CaptureResult,
 	CloseConfig,
@@ -62,4 +63,16 @@ export type PlatformBackend = {
 	 * still works perfectly well.
 	 */
 	findAppIcon(appPath: string): Promise<AppIconResult>;
+
+	/** Whether the administrator helper is set up. */
+	adminHelperStatus(): Promise<AdminHelperStatus>;
+
+	/**
+	 * Sets up (or updates) the administrator helper. Shows the OS consent
+	 * prompt, so it waits on the user; declining is reported in-band.
+	 */
+	installAdminHelper(): Promise<AdminHelperStatus>;
+
+	/** Removes the administrator helper. Shows the OS consent prompt too. */
+	removeAdminHelper(): Promise<AdminHelperStatus>;
 };
