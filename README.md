@@ -100,11 +100,27 @@ Windows 11 only — Windows 10 exposes no API for this, and a key with a desktop
 
 ## Positioning the window
 
-Three modes, chosen with the **Positioning** dropdown:
+Four modes, chosen with the **Positioning** dropdown:
 
 - **Monitor & snap zone** — pick a **Monitor** ("Primary monitor" follows whichever display is primary; the numbered entries pin a specific display) and a **Zone** (full screen, halves, quarters — exactly like the Windows Snap layouts). The position is worked out fresh on every key press, so it keeps working when you change resolution, scaling, or monitor arrangement. No capturing needed.
 - **Custom position (capture / manual)** — arrange the app's window exactly where you want it, then click **Capture current window position & size**. The X/Y/Width/Height fields fill in and the Status line confirms what was saved. The key restores that exact geometry from then on. (You can also type coordinates by hand.)
 - **Don't move the window** — the key becomes a plain launcher/focuser.
+- **Start minimized** — the app is launched and its window minimized as soon as it appears, without taking focus. If the app is already running (and **If already running** is ticked), its window is minimized. Handy for apps you want running in the background — chat, music, sync tools. On Windows the app is also asked to start minimized, so apps that honour that never flash up at all; on macOS it's launched in the background. A Steam game in this mode is waited for like a positioned one, so raise **Wait (seconds)** for slow starters.
+
+### Apps running as administrator (Windows)
+
+Windows doesn't let an ordinary program move, resize, or minimize the windows of an app running as administrator — Task Manager is the one most people meet, since it elevates itself on administrator accounts. Stream Deck runs as an ordinary program, so on its own the plugin can't position those apps; a key that tries fails with a message saying so, instead of claiming a success.
+
+The **Apps running as administrator** section of a Launch & Position key fixes that once, for every key:
+
+1. Click **Set up helper…** and approve the Windows permission prompt.
+2. From then on, administrator apps are positioned and minimized like any other. Nothing else changes: every other window is still moved directly, exactly as before.
+
+**Remove helper** in the same section undoes it (another permission prompt). What setup installs:
+
+- A small helper program, `C:\Program Files\Snap Launcher\SnapLauncherWindowHelper.exe`, built on your machine during setup. Program Files is writable only by administrators, so nothing running under your account can replace it.
+- A hidden scheduled task, **Snap Launcher Window Helper**, that runs the helper with administrator rights in your own session when the plugin asks. Your account may run the task but not change it, so it can't be repointed at another program.
+- The helper accepts exactly two requests — minimize a window, or move one to a rectangle — and refuses anything else. It reads and writes no files and starts nothing.
 
 ## Closing apps
 
@@ -140,7 +156,7 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 | If already running                                | Launch          | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance.                                                                             |
 | Wait (seconds)                                    | Launch          | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. Unused for a Steam game that isn't being positioned, which is never waited for. |
 | Desktop name                                      | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS.                |
-| Positioning                                       | Window position | **Monitor & snap zone**, **Custom position**, or **Don't move the window**. The rows below it change to match the mode.                                                         |
+| Positioning                                       | Window position | **Monitor & snap zone**, **Custom position**, **Don't move the window**, or **Start minimized**. The rows below it change to match the mode.                                    |
 | Monitor / Zone                                    | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display.                                                                         |
 | X/Y/Width/Height + Capture                        | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand.                                                                                              |
 | Title contains                                    | Advanced        | Only match windows whose title contains this text — disambiguates multi-window apps.                                                                                            |
@@ -179,6 +195,7 @@ Both platforms follow the same shape: each key press runs **one** short-lived sc
 - **Custom positions**: every PowerShell invocation opts into per-monitor-v2 DPI awareness, so capture and restore both use physical pixels in virtual-desktop coordinates — captured rectangles round-trip exactly across mixed-DPI monitor setups. If Windows rescales the window while it crosses onto a monitor with a different scale factor, the script verifies the final rectangle and reapplies once. Captured numbers include the invisible borders, so they read a few pixels larger than the visible frame — that's expected, and restoring them reproduces the visible layout exactly.
 - **Store / UWP apps**: launched by AppUserModelId through the shell (their exes under `WindowsApps` are ACL-protected). Windows are matched by app package, so launcher stubs like `WhatsApp.Root.exe` spawning `WhatsApp.exe` still resolve, and the plugin repositions the `ApplicationFrameHost` frame that actually hosts UWP windows. Bare `WindowsApps` exe paths from old configs are converted to the package identity automatically.
 - **Installed apps list**: classic apps come from Start Menu shortcuts (all-users and per-user) whose target is an `.exe` — picking one saves the `.lnk` path, which the launcher resolves like any shortcut. Store apps come from the shell's `AppsFolder` and are saved as `shell:AppsFolder\<AppUserModelId>`, the same form the Running-apps list produces.
+- **Apps running as administrator**: User Interface Privilege Isolation stops a medium-integrity process (the plugin) from moving an elevated process's windows — `SetWindowPos` and `ShowWindow` fail with `ERROR_ACCESS_DENIED`. The launch script checks the target process's token elevation first and, when blocked, sends the request to the administrator helper: a scheduled task registered with _highest privileges_ and an interactive-token principal, whose security descriptor gives the user read + execute only. The plugin starts it with `IRegisteredTask.RunEx`, passing the request as `$(Arg0)` (`min:<hwnd>` or `pos:<hwnd>:<x>:<y>:<w>:<h>`), and waits for it to exit. The helper is a C# program compiled with `Add-Type` during the consented setup, which runs via `-EncodedCommand` so no script file sits in a user-writable folder between consent and execution.
 - **Virtual desktops**: there is no documented Windows API to enumerate, create, or switch virtual desktops, or to move another process's window between them — the plugin uses the shell's internal COM interfaces (interface definitions derived from the MIT-licensed [MScholtes/VirtualDesktop](https://github.com/MScholtes/VirtualDesktop)). Windows 11 24H2 changed the internal vtable without changing the interface ID, so the plugin detects the build number (26100+) and picks the matching layout; Windows 10 is rejected with a clear message. A future Windows update could change these interfaces again — if virtual-desktop keys suddenly fail after an update, check for a plugin update.
 
 ## Project layout
@@ -309,7 +326,8 @@ Before publishing:
 
 ### Windows
 
-- **Nothing moves / access denied**: elevated (run-as-administrator) windows can't be repositioned by a non-elevated process (UIPI), and they don't appear in the Running apps list. Launch such apps unelevated, or run the Stream Deck software elevated (not generally recommended).
+- **Nothing moves / "is running as administrator"**: Windows doesn't let a non-elevated process move, resize, or minimize an elevated (run-as-administrator) app's window (UIPI) — Task Manager is the usual example, since it elevates itself for administrator accounts. Set up the administrator helper (see [Apps running as administrator](#apps-running-as-administrator-windows)) and those apps position normally. Such apps don't appear in the Running apps list; pick them from Installed apps or Browse instead.
+- **"The administrator helper did not respond" / "failed"**: click **Set up again** in the key's _Apps running as administrator_ section to repair it, or **Remove helper** and set it up afresh. The helper runs in your own session, so it only works while you're signed in — which is whenever Stream Deck is running anyway.
 - **App missing from the Installed apps list**: the list is built from Start Menu shortcuts and Microsoft Store packages, so portable apps that never created a shortcut won't appear — use **Browse for a file** (or **Running apps** while the app is open) instead. Click the refresh icon after installing something new.
 - **Monitor missing from the dropdown**: click the refresh icon next to the Monitor list — it's populated when the settings panel opens, so displays plugged in afterwards need a refresh.
 - **Window snaps to the wrong display**: "Primary monitor" follows Windows' current primary. If you want a key pinned to a physical display, pick its numbered entry instead.

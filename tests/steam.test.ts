@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 
 import {
+	findSteamClientIcon,
 	findSteamGame,
 	listSteamGames,
 	parseAppManifest,
@@ -271,4 +272,47 @@ test("findSteamGame reads one manifest instead of the whole library", () => {
 		path.join(libraryRoot, "steamapps", "common", "Second"),
 	);
 	assert.equal(findSteamGame([steamRoot], "120"), null);
+});
+
+/* ------------------------------- client icon ------------------------------- */
+
+const HASH = "3059e94fb89816fe1929a238ac2b55e8be348408";
+
+/** Lays out Steam's artwork cache for one game under a fresh Steam root. */
+function fakeArtwork(appId: string, cached: string[], icons: string[]): string {
+	const root = mkdtempSync(path.join(tmpdir(), "snap-steam-art-"));
+	roots.push(root);
+	const cache = path.join(root, "appcache", "librarycache", appId);
+	mkdirSync(cache, { recursive: true });
+	for (const name of cached) {
+		writeFileSync(path.join(cache, name), "");
+	}
+	mkdirSync(path.join(root, "steam", "games"), { recursive: true });
+	for (const name of icons) {
+		writeFileSync(path.join(root, "steam", "games", name), "");
+	}
+	return root;
+}
+
+test("Steam's own icon for a game is found through its artwork cache", () => {
+	const root = fakeArtwork("2807960", [`${HASH}.jpg`], [`${HASH}.ico`]);
+	assert.equal(findSteamClientIcon([root], "2807960"), path.join(root, "steam", "games", `${HASH}.ico`));
+});
+
+test("cached artwork without a matching .ico, or that isn't hash-named, yields no icon", () => {
+	assert.equal(findSteamClientIcon([fakeArtwork("10", [`${HASH}.jpg`], [])], "10"), null);
+	assert.equal(findSteamClientIcon([fakeArtwork("10", ["header.jpg"], ["header.ico"])], "10"), null);
+});
+
+test("a game with no artwork cache, or a malformed app id, yields no icon rather than throwing", () => {
+	const root = fakeArtwork("10", [`${HASH}.jpg`], [`${HASH}.ico`]);
+	assert.equal(findSteamClientIcon([root], "20"), null);
+	assert.equal(findSteamClientIcon([root], "../10"), null);
+	assert.equal(findSteamClientIcon([path.join(root, "nowhere")], "10"), null);
+});
+
+test("every Steam root is tried in turn", () => {
+	const empty = fakeArtwork("99", [], []);
+	const root = fakeArtwork("10", [`${HASH}.png`], [`${HASH}.ico`]);
+	assert.equal(findSteamClientIcon([empty, root], "10"), path.join(root, "steam", "games", `${HASH}.ico`));
 });

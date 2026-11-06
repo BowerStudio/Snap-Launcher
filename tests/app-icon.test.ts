@@ -624,3 +624,90 @@ test("a failed script throws so the failure is logged rather than shown as no ic
 	assert.throws(() => toAppIconResult({ ok: false, error: "PowerShell exploded" }), /PowerShell exploded/);
 	assert.throws(() => toAppIconResult(null), /no usable result/);
 });
+
+/* ------------------------------- Steam games ------------------------------- */
+
+const steamGame = (installDir: string, name: string) => ({
+	appId: "2807960",
+	name,
+	installDir,
+	launchUrl: "steam://rungameid/2807960",
+});
+
+function findSteamIcon(installDir: string, name: string, steamIcon: string | null): Promise<RawAppIcon> {
+	return runPowerShell<RawAppIcon>(
+		buildAppIconScript("steam:2807960", steamGame(installDir, name), steamIcon),
+		30_000,
+	);
+}
+
+test("a Steam game takes Steam's own icon ahead of anything in its install folder", async (t) => {
+	// The install folder has an icon of its own that would otherwise win.
+	const game = appFolder(t, { "Battlefield 6.ico": dibIco(32), "bf6.exe": Buffer.alloc(0) });
+	const client = appFolder(t, { "3059e94fb89816fe1929a238ac2b55e8be348408.ico": pngIco(256) });
+	const steamIcon = path.join(client, "3059e94fb89816fe1929a238ac2b55e8be348408.ico");
+
+	const result = await findSteamIcon(game, "Battlefield™ 6", steamIcon);
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.equal(result.path, steamIcon);
+	assert.equal(result.width, 256);
+});
+
+test("Steam's icon is enough for a game that isn't installed", async (t) => {
+	const client = appFolder(t, { "game.ico": pngIco(64) });
+
+	const result = await findSteamIcon("", "Some Game", path.join(client, "game.ico"));
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+});
+
+test("without Steam's icon, the install folder is still searched", async (t) => {
+	const game = appFolder(t, { "Battlefield 6.ico": dibIco(32) });
+
+	const result = await findSteamIcon(game, "Battlefield™ 6", null);
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.equal(result.path, path.join(game, "Battlefield 6.ico"));
+});
+
+/**
+ * Get-IconCandidates over a synthetic folder of empty files: only names are
+ * ranked, so the files never need content.
+ */
+async function iconCandidates(
+	t: { after(fn: () => void): void },
+	files: string[],
+	appName: string,
+	filter: string,
+): Promise<string[]> {
+	const dir = appFolder(t, Object.fromEntries(files.map((f) => [f, Buffer.alloc(0)])));
+	const script = `
+${ICON_HELPERS}
+$ErrorActionPreference = 'Stop'
+$picked = @(Get-IconCandidates ${psLiteral(dir)} ${psLiteral(appName)} ${psLiteral(filter)})
+$names = @($picked | ForEach-Object { [System.IO.Path]::GetFileName([string]$_) })
+Write-Output (ConvertTo-Json -InputObject @{ names = $names } -Compress)
+`;
+	return (await runPowerShell<{ names: string[] }>(script, 30_000)).names;
+}
+
+test("names match across spacing, punctuation and symbols", async (t) => {
+	// Ready or Not ships ReadyOrNot.exe beside its crash reporter and an
+	// Epic Online Services installer.
+	assert.deepEqual(
+		await iconCandidates(
+			t,
+			["ReadyOrNot.exe", "CrashReporter.exe", "EpicOnlineServicesInstaller.exe"],
+			"Ready or Not",
+			"*.exe",
+		),
+		["ReadyOrNot.exe"],
+	);
+	assert.deepEqual(await iconCandidates(t, ["Battlefield6.exe"], "Battlefield™ 6", "*.exe"), ["Battlefield6.exe"]);
+	assert.deepEqual(
+		await iconCandidates(t, ["unrelated.exe", "setup.exe"], "Ready or Not", "*.exe"),
+		[],
+		"an unrelated name is still never a candidate",
+	);
+});

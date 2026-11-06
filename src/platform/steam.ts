@@ -184,6 +184,55 @@ export function resolveSteamTarget(
 	};
 }
 
+/** A Steam content hash: how the client names cached artwork. */
+const ARTWORK_HASH = /^([0-9a-f]{40})\.(jpg|png)$/i;
+
+/**
+ * The icon Steam itself uses for a game — the one on the desktop shortcut it
+ * offers to create — or null when the client has none cached.
+ *
+ * This is the reliable source for a game's icon: the game's executable is
+ * named by its developer (Battlefield 6's is bf6.exe), so finding it by name is
+ * guesswork, while Steam has already fetched the publisher's icon.
+ *
+ * Steam keeps a game's artwork under appcache/librarycache/<appid>/, with the
+ * small library icon named by its content hash, and the full multi-size .ico
+ * for the same icon under steam/games/<that hash>.ico. Neither location is
+ * documented, so nothing here may fail: a layout this doesn't recognise just
+ * yields null, and the caller falls back to searching the install folder.
+ */
+export function findSteamClientIcon(steamRoots: readonly string[], appId: string): string | null {
+	if (!/^\d+$/.test(appId)) {
+		return null;
+	}
+	const seen = new Set<string>();
+	for (const root of steamRoots) {
+		const resolved = path.resolve(root);
+		if (seen.has(resolved.toLowerCase())) {
+			continue;
+		}
+		seen.add(resolved.toLowerCase());
+
+		let entries: string[];
+		try {
+			entries = readdirSync(path.join(resolved, "appcache", "librarycache", appId));
+		} catch {
+			continue;
+		}
+		for (const entry of entries.sort()) {
+			const hash = ARTWORK_HASH.exec(entry)?.[1];
+			if (!hash) {
+				continue;
+			}
+			const ico = path.join(resolved, "steam", "games", `${hash}.ico`);
+			if (existsSync(ico)) {
+				return ico;
+			}
+		}
+	}
+	return null;
+}
+
 /** Every library folder of every given installation, in order, deduplicated. */
 function libraryFolders(steamRoots: readonly string[]): string[] {
 	const seen = new Set<string>();

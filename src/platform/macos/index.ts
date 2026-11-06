@@ -5,6 +5,7 @@ import type { PlatformBackend } from "../backend";
 import { toAppIconResult, type RawAppIcon } from "../icons";
 import { listSteamGames, resolveSteamTarget } from "../steam";
 import type {
+	AdminHelperStatus,
 	AppIconResult,
 	CaptureResult,
 	CloseConfig,
@@ -21,6 +22,16 @@ import { buildDisplayListScript, toMonitorEntries, type RawScreen } from "./disp
 import { buildAppIconScript } from "./icons";
 import { runOsascript } from "./osascript";
 import { buildCaptureScript, buildCloseScript, buildLaunchScript } from "./windows";
+
+/**
+ * macOS has no counterpart to Windows' privilege isolation of windows: an app
+ * running as root is positioned through Accessibility like any other.
+ */
+const NO_ADMIN_HELPER: AdminHelperStatus = {
+	supported: false,
+	installed: false,
+	message: "Not needed on macOS.",
+};
 
 /** Headroom over an operation's own waiting, for osascript start-up and interop. */
 const OVERHEAD_MS = 20_000;
@@ -98,5 +109,17 @@ export const macosBackend: PlatformBackend = {
 		const steam = resolveSteamTarget(steamRoots(), appPath);
 		const raw = await runOsascript<RawAppIcon>(buildAppIconScript(appPath, steam), OVERHEAD_MS);
 		return toAppIconResult(raw);
+	},
+
+	async adminHelperStatus(): Promise<AdminHelperStatus> {
+		return NO_ADMIN_HELPER;
+	},
+
+	async installAdminHelper(): Promise<AdminHelperStatus> {
+		return NO_ADMIN_HELPER;
+	},
+
+	async removeAdminHelper(): Promise<AdminHelperStatus> {
+		return NO_ADMIN_HELPER;
 	},
 };

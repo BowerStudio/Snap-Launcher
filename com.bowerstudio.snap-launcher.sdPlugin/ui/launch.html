@@ -88,6 +88,13 @@
 				pointer-events: none;
 				transition: all 0.04s linear;
 			}
+			.status {
+				color: #c8c8c8;
+				font:
+					400 12px/1.5 -apple-system,
+					"Segoe UI",
+					sans-serif;
+			}
 			.pp-highlight.pp-preview {
 				background: rgba(26, 140, 255, 0.18);
 			}
@@ -215,8 +222,12 @@
 				<option value="zone">Monitor &amp; snap zone</option>
 				<option value="custom">Custom position (capture / manual)</option>
 				<option value="none">Don't move the window</option>
+				<option value="minimize">Start minimized</option>
 			</sdpi-select>
 		</sdpi-item>
+		<div class="hint minimize-only" hidden>
+			The app's window is minimized as soon as it appears — and an already-running window is minimized too.
+		</div>
 
 		<div class="zone-only" hidden>
 			<sdpi-item label="Display">
@@ -264,6 +275,30 @@
 			<sdpi-textfield setting="captureStatus" disabled></sdpi-textfield>
 		</sdpi-item>
 
+		<!-- ==================== Apps running as administrator ==================== -->
+		<!-- Windows only: privilege isolation of windows has no macOS
+		     counterpart. Revealed by platform.js. -->
+		<div class="win-only" hidden>
+			<div class="heading">Apps running as administrator</div>
+			<div class="hint">
+				Windows doesn't let Stream Deck move, resize or minimize the windows of apps running as administrator,
+				such as Task Manager. The helper does it on Stream Deck's behalf: set it up once — Windows asks for your
+				permission — and those apps are positioned like any other. It's shared by every key.
+			</div>
+
+			<sdpi-item label="Helper">
+				<div id="admin-helper-status" class="status">Checking…</div>
+			</sdpi-item>
+
+			<sdpi-item id="admin-helper-setup-item">
+				<sdpi-button id="admin-helper-setup">Set up helper…</sdpi-button>
+			</sdpi-item>
+
+			<sdpi-item id="admin-helper-remove-item" hidden>
+				<sdpi-button id="admin-helper-remove">Remove helper</sdpi-button>
+			</sdpi-item>
+		</div>
+
 		<!-- ============================= Advanced ============================== -->
 		<div class="heading">Advanced — window matching</div>
 		<div class="hint">
@@ -294,6 +329,7 @@
 				const mode = (modeSelect && modeSelect.value) || "custom";
 				document.querySelectorAll(".zone-only").forEach((el) => (el.hidden = mode !== "zone"));
 				document.querySelectorAll(".custom-only").forEach((el) => (el.hidden = mode !== "custom"));
+				document.querySelectorAll(".minimize-only").forEach((el) => (el.hidden = mode !== "minimize"));
 
 				const sourceSelect = document.querySelector('sdpi-select[setting="appSource"]');
 				const source = (sourceSelect && sourceSelect.value) || "running";
@@ -309,5 +345,6 @@
 		</script>
 
 		<script type="module" src="position-picker.js"></script>
+		<script type="module" src="admin-helper.js"></script>
 	</body>
 </html>

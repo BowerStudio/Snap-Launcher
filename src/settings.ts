@@ -36,6 +36,8 @@ export type LaunchSettings = {
 	 */
 	iconFor?: string;
 	autoImage?: string;
+	/** ICON_LOOKUP_VERSION the last lookup ran with; a miss is retried when it rises. */
+	iconLookup?: number;
 	/** Where the key's image came from; shown in the PI. */
 	iconStatus?: string;
 };
@@ -111,7 +113,12 @@ export function toConfig(s: LaunchSettings): LaunchConfig {
 	const hasRect = Number.isFinite(x) && Number.isFinite(y) && width > 0 && height > 0;
 
 	let mode: PositionMode;
-	if (s.positionMode === "none" || s.positionMode === "zone" || s.positionMode === "custom") {
+	if (
+		s.positionMode === "none" ||
+		s.positionMode === "zone" ||
+		s.positionMode === "custom" ||
+		s.positionMode === "minimize"
+	) {
 		mode = s.positionMode;
 	} else {
 		mode = (s.applyPosition ?? true) ? "custom" : "none";

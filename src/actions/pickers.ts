@@ -113,7 +113,37 @@ export async function applyAutoTitle<T extends TitledSettings>(ev: DidReceiveSet
 	await ev.action.setSettings({ ...settings, titledFor: appPath, autoTitle: name });
 }
 
-type IconedSettings = JsonObject & { appPath?: string; iconFor?: string; autoImage?: string; iconStatus?: string };
+type IconedSettings = JsonObject & {
+	appPath?: string;
+	iconFor?: string;
+	autoImage?: string;
+	iconStatus?: string;
+	iconLookup?: number;
+};
+
+/**
+ * Version of the icon lookup a key's last attempt was made with. Bumped when
+ * the lookup learns to find icons it used to miss, so keys that came up empty
+ * get one more try:
+ *
+ *   1 - (unrecorded) the original lookup
+ *   2 - Steam games use Steam's own icon; names match ignoring punctuation
+ */
+export const ICON_LOOKUP_VERSION = 2;
+
+/**
+ * Whether a key's icon needs looking up: its app has changed since the last
+ * lookup, or that lookup found nothing and has since been improved. An icon
+ * that was found is kept for good — rescanning on every start is exactly what
+ * storing it avoids.
+ */
+export function needsIconLookup(settings: IconedSettings): boolean {
+	const appPath = (settings.appPath ?? "").trim();
+	if (appPath !== (settings.iconFor ?? "")) {
+		return true;
+	}
+	return appPath !== "" && !settings.autoImage && (settings.iconLookup ?? 1) < ICON_LOOKUP_VERSION;
+}
 
 /** The action a key's icon is applied to. Both events carry the same union. */
 type IconAction<T extends IconedSettings> = DidReceiveSettingsEvent<T>["action"];
@@ -158,7 +188,8 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
  *
  * Every outcome — an icon, no icon, or a failed lookup — records iconFor. A
  * lookup costs a subprocess, so it must happen once per app chosen rather than
- * once per keystroke; re-picking the app is what asks for another try.
+ * once per keystroke; re-picking the app is what asks for another try, as does
+ * a plugin update that improves the lookup (see needsIconLookup).
  *
  * Never rejects: a key that cannot show its app's icon still works perfectly
  * well, and callers that fire this off during willAppear must not have to guard
@@ -166,7 +197,7 @@ function queued<T>(work: () => Promise<T>): Promise<T> {
  */
 export async function applyAutoIcon<T extends IconedSettings>(action: IconAction<T>, settings: T): Promise<void> {
 	const appPath = (settings.appPath ?? "").trim();
-	if (appPath === (settings.iconFor ?? "")) {
+	if (!needsIconLookup(settings)) {
 		return;
 	}
 
@@ -189,17 +220,27 @@ export async function applyAutoIcon<T extends IconedSettings>(action: IconAction
 			await setImage(action, result.icon.image);
 			await patchSettings(action, {
 				iconFor: appPath,
+				iconLookup: ICON_LOOKUP_VERSION,
 				autoImage: result.icon.image,
 				iconStatus: `Set from ${result.icon.sourcePath || "the app's icon"}`,
 			});
 		} else {
 			await setImage(action, undefined);
-			await patchSettings(action, { iconFor: appPath, autoImage: "", iconStatus: result.reason });
+			await patchSettings(action, {
+				iconFor: appPath,
+				iconLookup: ICON_LOOKUP_VERSION,
+				autoImage: "",
+				iconStatus: result.reason,
+			});
 		}
 	} catch (e) {
 		const message = e instanceof Error ? e.message : String(e);
 		logger.error(`Failed to find an icon for ${appPath}: ${message}`);
-		await patchSettings(action, { iconFor: appPath, iconStatus: `Icon lookup failed: ${message}` });
+		await patchSettings(action, {
+			iconFor: appPath,
+			iconLookup: ICON_LOOKUP_VERSION,
+			iconStatus: `Icon lookup failed: ${message}`,
+		});
 	} finally {
 		iconLookups.delete(lookup);
 	}

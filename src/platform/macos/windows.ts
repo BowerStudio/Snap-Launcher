@@ -224,7 +224,7 @@ ${WINDOW_HELPERS}`;
 
 /**
  * Launches (or focuses) the configured application, waits for its window, then
- * restores and repositions it.
+ * restores and repositions it — or minimizes it, in minimize mode.
  *
  * Launching goes through /usr/bin/open, never an Apple Event to the target —
  * see the note in scripts.ts on why that matters for permissions.
@@ -263,6 +263,9 @@ ${jsConfig(config, steam)}
             } else {
                 var parsed = parseIdentity(CFG.appPath);
                 var args = parsed.bundleId ? ['-b', parsed.bundleId] : [bundlePath];
+                // -g: launch in the background, so an app about to be
+                // minimized doesn't take focus on its way there.
+                if (CFG.positionMode === 'minimize') args.unshift('-g');
                 if (CFG.launchArgs) {
                     args.push('--args');
                     var extra = CFG.launchArgs.split(/\\s+/);
@@ -296,6 +299,18 @@ ${jsConfig(config, steam)}
             if (!target) {
                 fail('Timed out waiting for a window of "' + targetDescription(bundlePath) + '". Increase the wait time, or set a Process name override if the launcher differs from the windowed process.');
             }
+        }
+
+        if (CFG.positionMode === 'minimize') {
+            setAttrValue(target.win, 'AXMinimized', true);
+            return {
+                ok: true,
+                launched: needLaunch,
+                positioned: false,
+                movedDesktop: false,
+                pid: target.pid,
+                title: target.title
+            };
         }
 
         var rect = targetRect(CFG);

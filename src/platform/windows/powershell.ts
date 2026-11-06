@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { ICON_MAX_PX } from "../types";
+import { HELPER_CLIENT } from "./elevation";
 import type { CloseConfig, LaunchConfig, SteamTarget } from "../types";
 
 // Shared shapes now live in ../types; re-exported so existing importers of this
@@ -92,6 +93,49 @@ public static class Native {
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, ref RECT pvAttribute, int cbAttribute);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr h);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr token, int infoClass, out int info, int length, out int returned);
+
+    // 1 = elevated, 0 = not, -1 = unknown (the token could not be read).
+    private static int TokenElevation(IntPtr process) {
+        IntPtr token;
+        // TOKEN_QUERY (0x8)
+        if (!OpenProcessToken(process, 0x8, out token)) return -1;
+        try {
+            int elevated, returned;
+            // TokenElevation (20)
+            if (!GetTokenInformation(token, 20, out elevated, 4, out returned)) return -1;
+            return elevated != 0 ? 1 : 0;
+        } finally { CloseHandle(token); }
+    }
+
+    /// <summary>
+    /// True when the process is elevated and this one is not. User Interface
+    /// Privilege Isolation then refuses every move, resize, minimize and
+    /// restore of its windows - silently, from the window's point of view.
+    /// Unknown elevation is reported as not blocked, so a press is never
+    /// refused on a guess.
+    /// </summary>
+    public static bool IsBlockedByElevation(int pid) {
+        if (TokenElevation(GetCurrentProcess()) == 1) return false;
+        // PROCESS_QUERY_LIMITED_INFORMATION (0x1000)
+        IntPtr h = OpenProcess(0x1000, false, pid);
+        if (h == IntPtr.Zero) return false;
+        try { return TokenElevation(h) == 1; } finally { CloseHandle(h); }
+    }
 }
 
 public class AppWindow {
@@ -988,6 +1032,13 @@ function Test-SharedFolder([string]$folder) {
     return ($script:SharedFolders -contains $normalized)
 }
 
+# A name reduced to lower-case letters and digits, for comparing names that
+# differ only in spacing, punctuation or symbols.
+function Get-CompactName([string]$name) {
+    if (-not $name) { return '' }
+    return [System.Text.RegularExpressions.Regex]::Replace($name.ToLower(), '[^a-z0-9]', '')
+}
+
 # Words worth matching on: short ones ("of", "the", "2") connect nothing.
 function Get-NameWords([string]$name) {
     if (-not $name) { return @() }
@@ -1005,13 +1056,15 @@ function Get-IconCandidates([string]$root, [string]$appName, [string]$filter) {
     if ($files.Count -eq 0) { return @() }
 
     $rootLength = $root.TrimEnd('\\').Length + 1
-    $wanted = ''
-    if ($appName) { $wanted = $appName.ToLower() }
+    # Names are compared with spaces and punctuation removed: "Ready or Not"
+    # ships ReadyOrNot.exe, and "Battlefield™ 6" is "battlefield6".
+    $wanted = Get-CompactName $appName
     $words = Get-NameWords $appName
 
     $ranked = @($files | ForEach-Object {
-        $base = [System.IO.Path]::GetFileNameWithoutExtension($_.Name).ToLower()
+        $base = Get-CompactName ([System.IO.Path]::GetFileNameWithoutExtension($_.Name))
         $rank = -1
+        if (-not $base) { return }
         if ($wanted -and $base -eq $wanted) { $rank = 0 }
         elseif ($script:GenericIconNames -contains $base) { $rank = 1 }
         elseif ($wanted.Length -ge 3 -and $base.Length -ge 3 -and ($base.StartsWith($wanted) -or $wanted.StartsWith($base))) { $rank = 2 }
@@ -1334,11 +1387,12 @@ function Get-LogoAssetCandidates([string]$installLocation, [string]$logicalPath)
  * Inspector can show, not as an error: the key simply keeps the action's own
  * image.
  */
-export function buildAppIconScript(appPath: string, steam?: SteamTarget | null): string {
+export function buildAppIconScript(appPath: string, steam?: SteamTarget | null, steamIcon?: string | null): string {
 	return `
 ${PROLOG}
 $appPath = ${psJson(appPath)}
 $steam = ${steam ? psJson(steam) : "$null"}
+$steamIcon = ${steamIcon ? psJson(steamIcon) : "$null"}
 ${APPX}
 ${SHORTCUTS}
 ${ICON_RESOURCES}
@@ -1349,15 +1403,18 @@ try {
     $reason = $null
 
     if ($steam) {
-        # A game's executable name is the developer's choice and is recorded
-        # nowhere Snap Launcher can read, so its install directory is the whole
-        # search: first any icon file in it, then the icon compiled into
-        # whichever of its executables the game's name ties it to.
+        # Steam's own icon for the game comes first: it is the publisher's
+        # icon, exactly as Steam shows it. Without one, the install directory
+        # is the whole search - a game's executable name is the developer's
+        # choice and recorded nowhere Snap Launcher can read - so first any
+        # icon file in it, then the icon compiled into whichever of its
+        # executables the game's name ties it to.
+        if ($steamIcon) { Add-IconCandidates $candidates @($steamIcon) $false 1 }
         if ($steam.installDir) {
             Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.ico') $false 5
             Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.exe') $true 3
             if ($candidates.Count -eq 0) { $reason = 'No icon matching "' + $steam.name + '" was found in its install folder.' }
-        } else {
+        } elseif ($candidates.Count -eq 0) {
             $reason = '"' + $steam.name + '" is not installed in any Steam library.'
         }
     } elseif ($aumid = Get-TargetAumid $appPath) {
@@ -1480,7 +1537,8 @@ function psConfig(config: LaunchConfig | CloseConfig, steam?: SteamTarget | null
 
 /**
  * Launches (or focuses) the configured application, waits for its window, then
- * restores + repositions it. Emits exactly one JSON line on stdout.
+ * restores + repositions it — or minimizes it, in minimize mode. Emits exactly
+ * one JSON line on stdout.
  */
 export function buildLaunchScript(config: LaunchConfig, steam?: SteamTarget | null): string {
 	return `
@@ -1491,6 +1549,7 @@ ${APPX}
 ${ZONE_HELPERS}
 ${config.virtualDesktop ? VDESK : ""}
 ${FIND_WINDOW}
+${HELPER_CLIENT}
 
 # Windows 10/11 windows carry invisible resize borders: GetWindowRect extends
 # past the visible frame (typically 7px left/right/bottom, DPI-scaled), and
@@ -1518,6 +1577,30 @@ function Get-ZoneTarget($h, $rect) {
     $t.width = $t.width + $mLeft + $mRight
     $t.height = $t.height + $mTop + $mBottom
     return $t
+}
+
+function Get-ElevationMessage([string]$title) {
+    return ('"' + $title + '" is running as administrator, so Windows blocks Stream Deck from moving, resizing or minimizing its window. Set up the administrator helper (under "Apps running as administrator" in the key settings) to position it.')
+}
+
+# Set when the target window can only be moved by the administrator helper:
+# the helper's scheduled task, or $null to move the window directly.
+$viaHelper = $null
+
+# Moves the target window to an outer rectangle - directly, or through the
+# administrator helper when Windows refuses (ERROR_ACCESS_DENIED: privilege
+# isolation the up-front elevation check could not see, e.g. a process whose
+# token is unreadable). The helper restores a minimized or maximized window
+# itself, since that is refused too.
+function Set-TargetRect($h, $t) {
+    if (-not $script:viaHelper) {
+        # SWP_NOZORDER (0x4) | SWP_NOACTIVATE (0x10)
+        if ([Native]::SetWindowPos($h, [IntPtr]::Zero, [int]$t.x, [int]$t.y, [int]$t.width, [int]$t.height, 0x0014)) { return }
+        if ([System.Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 5) { return }
+        $script:viaHelper = Get-ElevationHelper
+        if (-not $script:viaHelper) { throw (Get-ElevationMessage $target.MainWindowTitle) }
+    }
+    Invoke-HelperRequest $script:viaHelper ('pos:{0}:{1}:{2}:{3}:{4}' -f $h.ToInt64(), [int]$t.x, [int]$t.y, [int]$t.width, [int]$t.height)
 }
 
 try {
@@ -1555,6 +1638,10 @@ try {
         } else {
             $sp = @{ FilePath = $cfg.appPath }
             if ($cfg.launchArgs) { $sp['ArgumentList'] = $cfg.launchArgs }
+            # Ask for a minimized first show, so apps that honor the startup
+            # show state never flash up. Apps that ignore it are minimized
+            # once their window appears, below.
+            if ($cfg.positionMode -eq 'minimize') { $sp['WindowStyle'] = 'Minimized' }
             if (-not $cfg.appPath.ToLower().EndsWith('.lnk')) {
                 try {
                     $dir = [System.IO.Path]::GetDirectoryName($cfg.appPath)
@@ -1599,6 +1686,16 @@ try {
         if ($movedDesktop) { Start-Sleep -Milliseconds 120 }
     }
 
+    # Windows won't let a non-elevated process move, resize or minimize an
+    # elevated app's window (Task Manager, Registry Editor, anything run as
+    # administrator), and the refusal is silent unless asked about. Hand such
+    # a window to the administrator helper; without one, say so rather than
+    # report a press that changed nothing as a success.
+    if ($cfg.positionMode -ne 'none' -and [Native]::IsBlockedByElevation([int]$target.Id)) {
+        $viaHelper = Get-ElevationHelper
+        if (-not $viaHelper) { throw (Get-ElevationMessage $target.MainWindowTitle) }
+    }
+
     $rect = $null
     if ($cfg.positionMode -eq 'custom') {
         $rect = @{ x = [int]$cfg.x; y = [int]$cfg.y; width = [int]$cfg.width; height = [int]$cfg.height }
@@ -1614,7 +1711,21 @@ try {
         }
     }
 
-    if ([Native]::IsIconic($hwnd) -or ($rect -and [Native]::IsZoomed($hwnd))) {
+    if ($cfg.positionMode -eq 'minimize') {
+        # SW_MINIMIZE (6): minimizes and hands activation to the next window,
+        # so focus doesn't stay on something the user can't see.
+        if ($viaHelper) {
+            if (-not [Native]::IsIconic($hwnd)) { Invoke-HelperRequest $viaHelper ('min:' + $hwnd.ToInt64()) }
+        } elseif (-not [Native]::IsIconic($hwnd)) {
+            [void][Native]::ShowWindow($hwnd, 6)
+        }
+        $out = @{ ok = $true; launched = $needLaunch; positioned = $false; movedDesktop = $movedDesktop; pid = $target.Id; title = $target.MainWindowTitle }
+        Write-Output (ConvertTo-Json -InputObject $out -Compress)
+        exit 0
+    }
+
+    # (The helper restores the window itself; Windows refuses this here.)
+    if (-not $viaHelper -and ([Native]::IsIconic($hwnd) -or ($rect -and [Native]::IsZoomed($hwnd)))) {
         [void][Native]::ShowWindow($hwnd, 9)
         Start-Sleep -Milliseconds 120
     }
@@ -1627,8 +1738,7 @@ try {
         # (Named $posTarget, not $target: $target still holds the window info
         # - Id/MainWindowTitle - needed for the result JSON below.)
         if ($cfg.positionMode -eq 'zone') { $posTarget = Get-ZoneTarget $hwnd $rect } else { $posTarget = $rect }
-        # SWP_NOZORDER (0x4) | SWP_NOACTIVATE (0x10)
-        [void][Native]::SetWindowPos($hwnd, [IntPtr]::Zero, [int]$posTarget.x, [int]$posTarget.y, [int]$posTarget.width, [int]$posTarget.height, 0x0014)
+        Set-TargetRect $hwnd $posTarget
         Start-Sleep -Milliseconds 120
 
         # Crossing into a monitor with a different DPI can rescale the window
@@ -1638,7 +1748,7 @@ try {
         $rc = New-Object RECT
         [void][Native]::GetWindowRect($hwnd, [ref]$rc)
         if (($rc.Left -ne [int]$posTarget.x) -or ($rc.Top -ne [int]$posTarget.y) -or (($rc.Right - $rc.Left) -ne [int]$posTarget.width) -or (($rc.Bottom - $rc.Top) -ne [int]$posTarget.height)) {
-            [void][Native]::SetWindowPos($hwnd, [IntPtr]::Zero, [int]$posTarget.x, [int]$posTarget.y, [int]$posTarget.width, [int]$posTarget.height, 0x0014)
+            Set-TargetRect $hwnd $posTarget
         }
         $applied = $true
     }

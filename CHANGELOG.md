@@ -4,6 +4,36 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] — 2026-11-06
+
+### Added
+
+- **Start minimized.** A new _Start minimized_ option in the **Positioning** dropdown launches
+  the app and minimizes its window as soon as it appears, instead of snapping it into place.
+  An already-running window is minimized too. On Windows the app is also asked to start
+  minimized, so apps that honour the request never flash up; on macOS it is launched in the
+  background so it doesn't take focus.
+- **Position apps running as administrator** (Windows). Task Manager and other elevated apps
+  can now be snapped, moved and minimized like any other. Windows won't let Stream Deck do
+  that itself, so a new _Apps running as administrator_ section in a Launch & Position key
+  sets up a small helper, once, with your permission: a helper program in Program Files and
+  a scheduled task that runs it with administrator rights when the plugin asks. It accepts
+  only "minimize this window" and "move this window here", and is used only for windows the
+  plugin can't move itself. **Remove helper** in the same section undoes it.
+
+### Fixed
+
+- **Steam games picked from _Choose from: Steam games_ now get their icon** on Windows. The
+  key image comes from Steam's own icon for the game — the one on the desktop shortcut Steam
+  offers to create — instead of guessing which executable in the install folder is the game's,
+  which failed whenever the executable's name didn't match the game's (Battlefield 6 ships
+  `bf6.exe`). The install-folder search remains as a fallback, and now compares names ignoring
+  spaces, punctuation and symbols, so `ReadyOrNot.exe` is recognised as "Ready or Not".
+- **Apps running as administrator** (Task Manager, for one) no longer report a successful
+  press when their window didn't move. Windows blocks a non-elevated process from moving,
+  resizing or minimizing an elevated app's window; without the new administrator helper the
+  key now fails with a message saying so, instead of silently leaving the window where it was.
+
 ## [1.3.0] — 2026-08-04
 
 ### Added

@@ -8,7 +8,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import type { JsonValue } from "@elgato/utils";
 
-import { getBackend } from "../platform";
+import { getBackend, type AdminHelperStatus } from "../platform";
 import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
 import { applyAutoIcon, applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
@@ -128,7 +128,46 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			await this.sendMonitors();
 		} else if (event === "captureWindow") {
 			await this.captureWindow(ev);
+		} else if (event === "getAdminHelper") {
+			await this.sendAdminHelper(() => getBackend().adminHelperStatus());
+		} else if (event === "installAdminHelper") {
+			await this.sendAdminHelper(
+				() => getBackend().installAdminHelper(),
+				"Waiting for you to approve the Windows permission prompt…",
+			);
+		} else if (event === "removeAdminHelper") {
+			await this.sendAdminHelper(
+				() => getBackend().removeAdminHelper(),
+				"Waiting for you to approve the Windows permission prompt…",
+			);
 		}
+	}
+
+	/**
+	 * Runs an administrator-helper operation and sends its outcome to the
+	 * Property Inspector. When the operation waits on the user, a busy status
+	 * goes first so the PI can say what it is waiting for.
+	 */
+	private async sendAdminHelper(operation: () => Promise<AdminHelperStatus>, busy?: string): Promise<void> {
+		if (busy) {
+			await streamDeck.ui.sendToPropertyInspector({
+				event: "adminHelper",
+				supported: true,
+				installed: false,
+				busy: true,
+				message: busy,
+			});
+		}
+
+		let status: AdminHelperStatus;
+		try {
+			status = await operation();
+		} catch (e) {
+			const message = e instanceof Error ? e.message : String(e);
+			logger.error(`Administrator helper: ${message}`);
+			status = { supported: true, installed: false, message: `Could not check the helper: ${message}` };
+		}
+		await streamDeck.ui.sendToPropertyInspector({ event: "adminHelper", busy: false, ...status });
 	}
 
 	/** Sends the connected monitors (geometry + label) to the Property Inspector. */

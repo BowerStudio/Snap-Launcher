@@ -4,7 +4,11 @@
  * consumes a LaunchResult must not be able to tell which platform produced it.
  */
 
-export type PositionMode = "none" | "zone" | "custom";
+/**
+ * What happens to the app's window after launch/focus: snapped to a zone, moved
+ * to an explicit rectangle, left alone, or minimized out of the way.
+ */
+export type PositionMode = "none" | "zone" | "custom" | "minimize";
 
 /**
  * Configuration passed into a backend's launch/capture operations. All fields
@@ -48,6 +52,20 @@ export type LaunchConfig = {
 export type LaunchResult =
 	| { ok: true; launched: boolean; positioned: boolean; movedDesktop: boolean; pid: number; title: string }
 	| { ok: false; error: string };
+
+/**
+ * State of the administrator helper: the one-time, consented setup that lets
+ * the plugin position windows of apps running as administrator. Windows only —
+ * macOS has no equivalent restriction, and reports itself unsupported.
+ */
+export type AdminHelperStatus = {
+	/** Whether this platform has a helper at all. */
+	supported: boolean;
+	/** Whether the helper is set up and usable. */
+	installed: boolean;
+	/** One line for the Property Inspector. */
+	message: string;
+};
 
 export type CloseMode = "close" | "closeThenKill" | "kill";
 
