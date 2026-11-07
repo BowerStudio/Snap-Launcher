@@ -1,10 +1,18 @@
 import path from "node:path";
 
 import type { PlatformBackend } from "../backend";
-import { toAppIconResult, type RawAppIcon } from "../icons";
-import { findSteamClientIcon, listSteamGames, parseSteamAppId, resolveSteamTarget } from "../steam";
+import { toAppIconList, toAppIconResult, type RawAppIcon, type RawAppIconList } from "../icons";
+import {
+	findSteamClientIcon,
+	findSteamLibraryIcon,
+	listSteamGames,
+	parseSteamAppId,
+	resolveSteamTarget,
+} from "../steam";
+import { findSteamLaunchExecutables } from "../steam-appinfo";
 import type {
 	AdminHelperStatus,
+	AppIconList,
 	AppIconResult,
 	CaptureResult,
 	CloseConfig,
@@ -26,6 +34,7 @@ import {
 	buildMonitorListScript,
 	buildSteamPathScript,
 	runPowerShell,
+	type SteamIconSources,
 } from "./powershell";
 import {
 	buildElevateScript,
@@ -106,6 +115,28 @@ async function steamRoots(): Promise<string[]> {
 	return [...(registrySteamPaths ?? []), ...defaults];
 }
 
+/**
+ * Where a Steam game's icon might be, by Steam's own records, or null for an
+ * ordinary app. Each is a different file the client keeps; see steam.ts and
+ * steam-appinfo.ts for what each one is and why it ranks where it does.
+ */
+async function steamIconSources(appPath: string): Promise<SteamIconSources | null> {
+	if (!parseSteamAppId(appPath)) {
+		return null;
+	}
+	const roots = await steamRoots();
+	const target = resolveSteamTarget(roots, appPath);
+	if (!target) {
+		return null;
+	}
+	return {
+		target,
+		clientIcon: findSteamClientIcon(roots, target.appId),
+		launchExes: findSteamLaunchExecutables(roots, target.appId, target.installDir),
+		libraryIcon: findSteamLibraryIcon(roots, target.appId),
+	};
+}
+
 /** The resolved Steam game for a config's appPath, or null for ordinary apps. */
 async function steamTarget(config: LaunchConfig | CloseConfig): Promise<SteamTarget | null> {
 	// Tested before the roots are looked up: resolving them can cost a
@@ -166,17 +197,23 @@ export const windowsBackend: PlatformBackend = {
 	},
 
 	async findAppIcon(appPath: string): Promise<AppIconResult> {
-		// A game's icon is looked for in its install directory, so the same
-		// Steam resolution the other operations do is needed here too.
-		const roots = parseSteamAppId(appPath) ? await steamRoots() : [];
-		const steam = roots.length ? resolveSteamTarget(roots, appPath) : null;
-		// Steam's own icon for the game, when the client has one cached, beats
-		// anything the install folder can offer.
-		const clientIcon = steam ? findSteamClientIcon(roots, steam.appId) : null;
 		// Searching a folder tree is closer to the installed-apps scan than to
 		// the quick window operations, so it gets the same allowance.
-		const raw = await runPowerShell<RawAppIcon>(buildAppIconScript(appPath, steam, clientIcon), 30_000);
+		const raw = await runPowerShell<RawAppIcon>(
+			buildAppIconScript(appPath, await steamIconSources(appPath)),
+			30_000,
+		);
 		return toAppIconResult(raw);
+	},
+
+	async listAppIcons(appPath: string): Promise<AppIconList> {
+		// Renders every candidate rather than stopping at the first, so it is
+		// given longer still.
+		const raw = await runPowerShell<RawAppIconList>(
+			buildAppIconScript(appPath, await steamIconSources(appPath), true),
+			60_000,
+		);
+		return toAppIconList(raw);
 	},
 
 	adminHelperStatus(): Promise<AdminHelperStatus> {

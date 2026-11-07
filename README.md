@@ -63,6 +63,8 @@ The **Choose from** selector switches between four ways of picking an app. All f
 
 Picking an app also sets the key's title to the app's name (e.g. "WhatsApp") and gives it the app's own icon — nothing to configure. This works for classic apps, Steam games, and (Windows only, since Store apps don't exist on macOS) Microsoft Store apps, whose icon comes from the artwork the app's package declares rather than from an executable. Anything you type in Stream Deck's own **Title** field always takes precedence over the auto-title, and dropping your own image on the key always wins over the auto-icon.
 
+If the automatic icon isn't the one you want, click **Choose icon…** under **Key image**: it shows every icon found for the app (for a Steam game, Steam's own icon, each executable and icon file in its install folder, and Steam's small library icon), and the one you click becomes the key's image. **Auto** goes back to the automatic choice, and picking a different app resets it.
+
 On macOS an app is remembered by its **bundle identifier** wherever possible, so a key keeps working after the app is updated, renamed, or moved between `/Applications` and `~/Applications`.
 
 ## Steam games
@@ -211,6 +213,7 @@ Snap-Launcher\
 │   │   ├── types.ts / backend.ts         shared shapes + the backend contract
 │   │   ├── index.ts                      picks the backend for the running OS
 │   │   ├── steam.ts                      Steam library discovery (shared by both)
+│   │   ├── steam-appinfo.ts              the executables Steam launches, from appinfo.vdf
 │   │   ├── windows\                      PowerShell script builders + runner
 │   │   └── macos\                        osascript (JXA) script builders + runner
 │   └── actions\                          launch-app.ts, close-app.ts, pickers.ts (shared PI dropdowns)

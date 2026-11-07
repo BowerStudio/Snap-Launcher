@@ -1,4 +1,4 @@
-import { type AppIconResult } from "./types";
+import { type AppIcon, type AppIconList, type AppIconResult } from "./types";
 
 /**
  * Application icons, as both platforms' scripts report them.
@@ -27,6 +27,14 @@ export type RawAppIcon = {
 	error?: string;
 };
 
+/** The JSON line an icon script emits when asked for every icon it can find. */
+export type RawAppIconList = {
+	ok?: boolean;
+	icons?: { path?: string; width?: number; height?: number; png?: string }[];
+	reason?: string;
+	error?: string;
+};
+
 /** Fallback wording for a script that reported neither an icon nor a reason. */
 const UNKNOWN_REASON = "No icon file could be found for this app.";
 
@@ -49,14 +57,39 @@ export function toAppIconResult(raw: RawAppIcon | null | undefined): AppIconResu
 		return { found: false, reason: (raw.reason ?? "").trim() || UNKNOWN_REASON };
 	}
 
+	return { found: true, icon: toIcon(raw.path, raw.width, raw.height, raw.png) };
+}
+
+/**
+ * Interprets a script's list of icons. As with toAppIconResult, a failed script
+ * throws, and any entry without an image is dropped rather than offered as a
+ * blank choice.
+ */
+export function toAppIconList(raw: RawAppIconList | null | undefined): AppIconList {
+	if (!raw || typeof raw !== "object") {
+		throw new Error("The icon lookup produced no usable result.");
+	}
+	if (raw.ok === false) {
+		throw new Error(raw.error || "The icon lookup failed.");
+	}
+	const icons = (Array.isArray(raw.icons) ? raw.icons : [])
+		.filter((i) => i && typeof i.png === "string" && i.png.length > 0)
+		.map((i) => toIcon(i.path, i.width, i.height, i.png as string));
+	return { icons, reason: icons.length ? "" : (raw.reason ?? "").trim() || UNKNOWN_REASON };
+}
+
+/** Builds an AppIcon from a script's fields. */
+function toIcon(
+	sourcePath: string | undefined,
+	width: number | undefined,
+	height: number | undefined,
+	png: string,
+): AppIcon {
 	return {
-		found: true,
-		icon: {
-			sourcePath: typeof raw.path === "string" ? raw.path : "",
-			width: size(raw.width),
-			height: size(raw.height),
-			image: `data:image/png;base64,${raw.png}`,
-		},
+		sourcePath: typeof sourcePath === "string" ? sourcePath : "",
+		width: size(width),
+		height: size(height),
+		image: `data:image/png;base64,${png}`,
 	};
 }
 

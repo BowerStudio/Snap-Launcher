@@ -11,7 +11,15 @@ import type { JsonValue } from "@elgato/utils";
 import { getBackend, type AdminHelperStatus } from "../platform";
 import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
-import { applyAutoIcon, applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
+import {
+	applyAutoIcon,
+	applyAutoTitle,
+	chooseAppIcon,
+	sendAppIcons,
+	sendInstalledApps,
+	sendRunningApps,
+	sendSteamGames,
+} from "./pickers";
 
 const logger = streamDeck.logger.createScope("LaunchApp");
 
@@ -124,6 +132,11 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			await sendInstalledApps();
 		} else if (event === "getSteamGames") {
 			await sendSteamGames();
+		} else if (event === "getAppIcons") {
+			await sendAppIcons(ev.action);
+		} else if (event === "chooseAppIcon") {
+			const chosen = (payload as Record<string, JsonValue>)["path"];
+			await chooseAppIcon(ev.action, typeof chosen === "string" ? chosen : "");
 		} else if (event === "getMonitors") {
 			await this.sendMonitors();
 		} else if (event === "captureWindow") {

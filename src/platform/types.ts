@@ -124,6 +124,13 @@ export type AppIcon = {
 export type AppIconResult = { found: true; icon: AppIcon } | { found: false; reason: string };
 
 /**
+ * Every distinct icon found for an application, best first, for the user to
+ * choose from. The first is the one the automatic lookup would pick. When none
+ * were found, reason says why.
+ */
+export type AppIconList = { icons: AppIcon[]; reason: string };
+
+/**
  * A "steam:<appid>" appPath resolved against the local Steam installation, and
  * passed to the platform scripts alongside the config. Resolved per operation
  * rather than persisted: a game can be moved between library folders, updated,

@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { deflateSync } from "node:zlib";
 
-import { toAppIconResult, type RawAppIcon } from "../src/platform/icons.ts";
+import { toAppIconList, toAppIconResult, type RawAppIcon, type RawAppIconList } from "../src/platform/icons.ts";
 import { ICON_MAX_PX } from "../src/platform/types.ts";
 import { buildAppIconScript, ICON_HELPERS, runPowerShell } from "../src/platform/windows/powershell.ts";
 
@@ -634,9 +634,20 @@ const steamGame = (installDir: string, name: string) => ({
 	launchUrl: "steam://rungameid/2807960",
 });
 
-function findSteamIcon(installDir: string, name: string, steamIcon: string | null): Promise<RawAppIcon> {
+function findSteamIcon(
+	installDir: string,
+	name: string,
+	steamIcon: string | null,
+	libraryIcon: string | null = null,
+	launchExes: string[] = [],
+): Promise<RawAppIcon> {
 	return runPowerShell<RawAppIcon>(
-		buildAppIconScript("steam:2807960", steamGame(installDir, name), steamIcon),
+		buildAppIconScript("steam:2807960", {
+			target: steamGame(installDir, name),
+			clientIcon: steamIcon,
+			launchExes,
+			libraryIcon,
+		}),
 		30_000,
 	);
 }
@@ -669,6 +680,155 @@ test("without Steam's icon, the install folder is still searched", async (t) => 
 
 	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
 	assert.equal(result.path, path.join(game, "Battlefield 6.ico"));
+});
+
+test("a game whose executable carries no icon falls back to Steam's library icon", async (t) => {
+	// Atom Zombie Smasher: the exe matches the game's name exactly but has no
+	// icon resource, and Steam has no .ico because no shortcut was ever made.
+	const game = appFolder(t, { "AtomZombieSmasher.exe": Buffer.alloc(0) });
+	const cache = appFolder(t, { "1def7881c31f5d65c3892056adefa418e127523e.jpg": png(32) });
+	const libraryIcon = path.join(cache, "1def7881c31f5d65c3892056adefa418e127523e.jpg");
+
+	const result = await findSteamIcon(game, "Atom Zombie Smasher ", null, libraryIcon);
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.equal(result.path, libraryIcon);
+	assert.equal(result.width, 32);
+});
+
+test("Steam's 32px library icon only answers when the install folder has nothing", async (t) => {
+	const game = appFolder(t, { "Battlefield 6.ico": dibIco(32) });
+	const cache = appFolder(t, { "library.jpg": png(32) });
+
+	const result = await findSteamIcon(game, "Battlefield™ 6", null, path.join(cache, "library.jpg"));
+
+	assert.equal(result.path, path.join(game, "Battlefield 6.ico"));
+});
+
+test("the executable Steam launches beats guessing one from the game's name", async (t) => {
+	// Rock of Ages 2 ships ROA2.exe, which its name says nothing about; a .ico
+	// whose name does match would otherwise win.
+	const game = appFolder(t, { "Rock of Ages 2.ico": dibIco(32), "ROA2.exe": readFileSync(EXPLORER) });
+	const launchExe = path.join(game, "ROA2.exe");
+
+	const result = await findSteamIcon(game, "Rock of Ages 2", null, null, [launchExe]);
+
+	assert.equal(result.found, true, `expected an icon: ${result.reason}`);
+	assert.equal(result.path, launchExe);
+});
+
+test("Steam's own .ico still beats the executable it launches", async (t) => {
+	const game = appFolder(t, { "bf6.exe": readFileSync(EXPLORER) });
+	const client = appFolder(t, { "game.ico": pngIco(256) });
+
+	const result = await findSteamIcon(game, "Battlefield™ 6", path.join(client, "game.ico"), null, [
+		path.join(game, "bf6.exe"),
+	]);
+
+	assert.equal(result.path, path.join(client, "game.ico"));
+});
+
+/** The icon script in list mode, over a Steam game. */
+function listSteamIcons(
+	installDir: string,
+	name: string,
+	sources: { clientIcon?: string; launchExes?: string[]; libraryIcon?: string } = {},
+): Promise<RawAppIconList> {
+	return runPowerShell<RawAppIconList>(
+		buildAppIconScript(
+			"steam:2807960",
+			{
+				target: steamGame(installDir, name),
+				clientIcon: sources.clientIcon ?? null,
+				launchExes: sources.launchExes ?? [],
+				libraryIcon: sources.libraryIcon ?? null,
+			},
+			true,
+		),
+		60_000,
+	);
+}
+
+test("listing offers every distinct icon, best first, unrelated names included", async (t) => {
+	const game = appFolder(t, {
+		"TheDivision.exe": readFileSync(EXPLORER),
+		"Division.ico": pngIco(64),
+		"UbisoftConnectInstaller.ico": dibIco(48),
+	});
+	const client = appFolder(t, { "game.ico": pngIco(256), "library.jpg": png(32) });
+
+	const result = toAppIconList(
+		await listSteamIcons(game, "Tom Clancy's The Division", {
+			clientIcon: path.join(client, "game.ico"),
+			launchExes: [path.join(game, "TheDivision.exe")],
+			libraryIcon: path.join(client, "library.jpg"),
+		}),
+	);
+
+	assert.deepEqual(
+		result.icons.map((i) => path.basename(i.sourcePath)),
+		["game.ico", "TheDivision.exe", "Division.ico", "UbisoftConnectInstaller.ico", "library.jpg"],
+		"Steam's icon, the launch exe, related then unrelated files, and Steam's library icon last",
+	);
+	assert.ok(result.icons.every((i) => i.image.startsWith("data:image/png;base64,")));
+});
+
+test("listing offers the same picture only once, and each file only once", async (t) => {
+	// The launch exe is also the exe the name matches; the two .ico files hold
+	// the very same image.
+	const game = appFolder(t, {
+		"Cuphead.exe": readFileSync(EXPLORER),
+		"Cuphead.ico": pngIco(64),
+		"icon.ico": pngIco(64),
+	});
+
+	const result = toAppIconList(
+		await listSteamIcons(game, "Cuphead", { launchExes: [path.join(game, "Cuphead.exe")] }),
+	);
+
+	assert.deepEqual(
+		result.icons.map((i) => path.basename(i.sourcePath)),
+		["Cuphead.exe", "Cuphead.ico"],
+	);
+});
+
+test("listing reports why when nothing can be shown", async (t) => {
+	const game = appFolder(t, { "AtomZombieSmasher.exe": Buffer.alloc(0) });
+
+	const result = toAppIconList(await listSteamIcons(game, "Atom Zombie Smasher"));
+
+	assert.deepEqual(result.icons, []);
+	assert.ok(result.reason.length > 0);
+});
+
+test("an ordinary app's list includes its other executables, but never a shared folder's", async (t) => {
+	const dir = appFolder(t, { "Signal.exe": readFileSync(EXPLORER), "Updater.exe": readFileSync(EXPLORER) });
+	const own = toAppIconList(
+		await runPowerShell<RawAppIconList>(buildAppIconScript(path.join(dir, "Signal.exe"), null, true), 60_000),
+	);
+	// Both exes carry explorer's icon, so the second is the same picture.
+	assert.deepEqual(
+		own.icons.map((i) => path.basename(i.sourcePath)),
+		["Signal.exe"],
+	);
+
+	const system = toAppIconList(await runPowerShell<RawAppIconList>(buildAppIconScript(EXPLORER, null, true), 60_000));
+	assert.ok(
+		system.icons.every((i) => path.dirname(i.sourcePath).toLowerCase() === path.dirname(EXPLORER).toLowerCase()),
+		"nothing from another app's folder",
+	);
+	assert.equal(system.icons.length, 1, "the Windows folder's other executables are not explorer's");
+});
+
+test("a list reply without images is no icons, and a failed script throws", () => {
+	assert.deepEqual(toAppIconList({ ok: true, icons: [{ path: "a.ico", png: "" }], reason: "Nothing." }), {
+		icons: [],
+		reason: "Nothing.",
+	});
+	const one = toAppIconList({ ok: true, icons: [{ path: "a.ico", width: 32, height: 32, png: "QUJD" }] });
+	assert.deepEqual(one.icons, [{ sourcePath: "a.ico", width: 32, height: 32, image: "data:image/png;base64,QUJD" }]);
+	assert.throws(() => toAppIconList({ ok: false, error: "boom" }), /boom/);
+	assert.throws(() => toAppIconList(null), /no usable result/);
 });
 
 /**
@@ -709,5 +869,26 @@ test("names match across spacing, punctuation and symbols", async (t) => {
 		await iconCandidates(t, ["unrelated.exe", "setup.exe"], "Ready or Not", "*.exe"),
 		[],
 		"an unrelated name is still never a candidate",
+	);
+});
+
+test("an executable named for a run of the name's words matches past a publisher prefix", async (t) => {
+	// The Division ships thedivision.exe beside Ubisoft Connect's installer.
+	assert.deepEqual(
+		await iconCandidates(
+			t,
+			["thedivision.exe", "UbisoftConnectInstaller.exe"],
+			"Tom Clancy's The Division",
+			"*.exe",
+		),
+		["thedivision.exe"],
+	);
+	assert.deepEqual(await iconCandidates(t, ["Darktide.exe"], "Warhammer 40,000: Darktide", "*.exe"), [
+		"Darktide.exe",
+	]);
+	assert.deepEqual(
+		await iconCandidates(t, ["hedivision.exe", "the.exe"], "Tom Clancy's The Division", "*.exe"),
+		[],
+		"a run never splits a word, and runs under four letters connect nothing",
 	);
 });

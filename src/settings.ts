@@ -40,6 +40,13 @@ export type LaunchSettings = {
 	iconLookup?: number;
 	/** Where the key's image came from; shown in the PI. */
 	iconStatus?: string;
+	/** The file the key's current image was rendered from, whoever chose it. */
+	iconSource?: string;
+	/**
+	 * The file the user picked the key's image from in the icon picker, or ""
+	 * while the automatic choice stands. Cleared whenever the app changes.
+	 */
+	iconChoice?: string;
 };
 
 /**

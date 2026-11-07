@@ -25,6 +25,7 @@ function unsupportedBackend(platform: string): PlatformBackend {
 		listSteamGames: fail,
 		listMonitors: fail,
 		findAppIcon: fail,
+		listAppIcons: fail,
 		adminHelperStatus: fail,
 		installAdminHelper: fail,
 		removeAdminHelper: fail,
