@@ -987,8 +987,9 @@ function Get-ExecutableIcon([string]$exe) {
  *
  * A candidate must be tied to the app by name: exactly the executable's, one of
  * the conventional generic names, one that shares a prefix with it, or one that
- * shares a whole word with it (which is what connects "Warhammer 40,000:
- * Darktide" to Darktide.exe). A file with an unrelated name is never a
+ * is a run of its whole words (which is what connects "Warhammer 40,000:
+ * Darktide" to Darktide.exe, and "Tom Clancy's The Division" to
+ * thedivision.exe). A file with an unrelated name is never a
  * candidate, however alone it sits in the folder — System32 holds exactly one
  * .ico, OneDrive's, and a Notepad key showing the OneDrive logo is worse than a
  * Notepad key showing nothing of the sort.
@@ -1039,13 +1040,30 @@ function Get-CompactName([string]$name) {
     return [System.Text.RegularExpressions.Regex]::Replace($name.ToLower(), '[^a-z0-9]', '')
 }
 
-# Words worth matching on: short ones ("of", "the", "2") connect nothing.
-function Get-NameWords([string]$name) {
+# Every run of consecutive whole words in a name, compacted: "Tom Clancy's The
+# Division" yields "division", "thedivision", "clancysthedivision" and so on,
+# which is what ties it to thedivision.exe when a publisher or series prefix
+# leads the name but not the executable's. Words are never split, so a run
+# always starts and ends on a word boundary. Short runs ("of", "the", "2")
+# connect nothing and are dropped.
+function Get-NameWordRuns([string]$name) {
     if (-not $name) { return @() }
-    return @([System.Text.RegularExpressions.Regex]::Split($name.ToLower(), '[^a-z0-9]+') | Where-Object { $_.Length -ge 4 })
+    $words = @([System.Text.RegularExpressions.Regex]::Split($name.ToLower(), '[^a-z0-9]+') | Where-Object { $_ })
+    $runs = New-Object System.Collections.Generic.HashSet[string]
+    for ($start = 0; $start -lt $words.Count; $start++) {
+        $run = ''
+        for ($end = $start; $end -lt $words.Count; $end++) {
+            $run += $words[$end]
+            if ($run.Length -ge 4) { [void]$runs.Add($run) }
+        }
+    }
+    return @($runs)
 }
 
-function Get-IconCandidates([string]$root, [string]$appName, [string]$filter) {
+# $includeUnrelated keeps files whose name ties them to nothing, ranked after
+# every related one: the icon picker shows the user everything in the folder,
+# where the automatic lookup must never guess.
+function Get-IconCandidates([string]$root, [string]$appName, [string]$filter, [bool]$includeUnrelated) {
     if (-not $root) { return @() }
     try { if (-not (Test-Path -LiteralPath $root -PathType Container)) { return @() } } catch { return @() }
 
@@ -1059,7 +1077,7 @@ function Get-IconCandidates([string]$root, [string]$appName, [string]$filter) {
     # Names are compared with spaces and punctuation removed: "Ready or Not"
     # ships ReadyOrNot.exe, and "Battlefield™ 6" is "battlefield6".
     $wanted = Get-CompactName $appName
-    $words = Get-NameWords $appName
+    $wordRuns = Get-NameWordRuns $appName
 
     $ranked = @($files | ForEach-Object {
         $base = Get-CompactName ([System.IO.Path]::GetFileNameWithoutExtension($_.Name))
@@ -1068,9 +1086,13 @@ function Get-IconCandidates([string]$root, [string]$appName, [string]$filter) {
         if ($wanted -and $base -eq $wanted) { $rank = 0 }
         elseif ($script:GenericIconNames -contains $base) { $rank = 1 }
         elseif ($wanted.Length -ge 3 -and $base.Length -ge 3 -and ($base.StartsWith($wanted) -or $wanted.StartsWith($base))) { $rank = 2 }
-        elseif ($words -contains $base) { $rank = 3 }
-        # An unrelated name is not a candidate at all.
-        if ($rank -lt 0) { return }
+        elseif ($wordRuns -contains $base) { $rank = 3 }
+        # An unrelated name is not a candidate at all - unless the user is the
+        # one choosing.
+        if ($rank -lt 0) {
+            if (-not $includeUnrelated) { return }
+            $rank = 9
+        }
         [pscustomobject]@{
             Path = $_.FullName
             Rank = $rank
@@ -1375,6 +1397,27 @@ function Get-LogoAssetCandidates([string]$installLocation, [string]$logicalPath)
 `;
 
 /**
+ * Everything the backend resolved about where a Steam game's icon might be,
+ * before the script runs: the files Steam itself knows of, best first.
+ */
+export type SteamIconSources = {
+	target: SteamTarget;
+	/** Steam's own .ico for the game, written when a desktop shortcut is made. */
+	clientIcon: string | null;
+	/** The executables Steam launches the game with, from appinfo.vdf. */
+	launchExes: string[];
+	/** The 32px icon from Steam's library list. */
+	libraryIcon: string | null;
+};
+
+/**
+ * How many of the found icons the picker is offered at most. A folder can hold
+ * a hundred executables (PCMark ships 96); past a couple of dozen, the useful
+ * ones have long since been shown, ranked first.
+ */
+export const ICON_LIST_MAX = 24;
+
+/**
  * Finds the icon a key's application carries and returns it as base64 PNG.
  *
  * Every place worth looking is collected first, best candidate to worst, and
@@ -1386,17 +1429,45 @@ function Get-LogoAssetCandidates([string]$installLocation, [string]$logicalPath)
  * Finding nothing is reported as ok/found:false with a reason the Property
  * Inspector can show, not as an error: the key simply keeps the action's own
  * image.
+ *
+ * With listAll, the same search instead renders every distinct icon it can
+ * find, for the user to choose from: files with unrelated names are included,
+ * ranked after everything the automatic lookup would have tried, and the
+ * reply is { ok, icons: [...] }.
  */
-export function buildAppIconScript(appPath: string, steam?: SteamTarget | null, steamIcon?: string | null): string {
+export function buildAppIconScript(appPath: string, steam?: SteamIconSources | null, listAll = false): string {
 	return `
 ${PROLOG}
 $appPath = ${psJson(appPath)}
-$steam = ${steam ? psJson(steam) : "$null"}
-$steamIcon = ${steamIcon ? psJson(steamIcon) : "$null"}
+$steam = ${steam ? psJson(steam.target) : "$null"}
+$steamIcon = ${steam?.clientIcon ? psJson(steam.clientIcon) : "$null"}
+$steamLaunchExes = @(${(steam?.launchExes ?? []).map(psString).join(", ")})
+$steamLibraryIcon = ${steam?.libraryIcon ? psJson(steam.libraryIcon) : "$null"}
+$listAll = ${listAll ? "$true" : "$false"}
 ${APPX}
 ${SHORTCUTS}
 ${ICON_RESOURCES}
 ${ICON_HELPERS}
+
+# How many candidates of one kind are queued: a handful when the first that
+# decodes wins, everything when the user is choosing.
+function Get-Limit([int]$n) { if ($listAll) { return 40 } return $n }
+
+# Renders one candidate to a PNG, or explains why it can't be.
+function Get-CandidatePng($candidate) {
+    if ($candidate.RawImage) {
+        # A bare image file (a Store asset, Steam's library icon) is not an
+        # .ico container, so it skips Get-CandidateIcon/Select-IconFrame.
+        $png = ConvertTo-ScaledImagePng $candidate.Path ${ICON_MAX_PX}
+        if (-not $png) { return @{ failure = '"' + $candidate.Path + '" is not a readable image file.' } }
+        return @{ png = $png }
+    }
+    $bytes = Get-CandidateIcon $candidate
+    if ($null -eq $bytes) { return @{ failure = '"' + $candidate.Path + '" carries no icon of its own.' } }
+    $frame = Select-IconFrame $bytes
+    if (-not $frame) { return @{ failure = '"' + $candidate.Path + '" is not a readable icon file.' } }
+    return @{ png = (ConvertTo-IconPng $bytes $frame ${ICON_MAX_PX}) }
+}
 
 try {
     $candidates = New-Object System.Collections.Generic.List[object]
@@ -1404,18 +1475,24 @@ try {
 
     if ($steam) {
         # Steam's own icon for the game comes first: it is the publisher's
-        # icon, exactly as Steam shows it. Without one, the install directory
-        # is the whole search - a game's executable name is the developer's
-        # choice and recorded nowhere Snap Launcher can read - so first any
-        # icon file in it, then the icon compiled into whichever of its
-        # executables the game's name ties it to.
+        # icon, exactly as Steam shows it. Then the executable Steam itself
+        # launches, as recorded in its app metadata - the game's own exe by
+        # Steam's say-so rather than a guess from its name. Only then is the
+        # install directory searched: any icon file in it, and the icon
+        # compiled into whichever executable the game's name ties it to.
         if ($steamIcon) { Add-IconCandidates $candidates @($steamIcon) $false 1 }
+        Add-IconCandidates $candidates $steamLaunchExes $true (Get-Limit 2)
         if ($steam.installDir) {
-            Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.ico') $false 5
-            Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.exe') $true 3
-            if ($candidates.Count -eq 0) { $reason = 'No icon matching "' + $steam.name + '" was found in its install folder.' }
-        } elseif ($candidates.Count -eq 0) {
-            $reason = '"' + $steam.name + '" is not installed in any Steam library.'
+            Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.ico' $listAll) $false (Get-Limit 5)
+            Add-IconCandidates $candidates (Get-IconCandidates $steam.installDir ([string]$steam.name) '*.exe' $listAll) $true (Get-Limit 3)
+        }
+        # Last of all, the small icon from Steam's library list: the right
+        # image, but only 32x32, so anything larger found above wins. It is
+        # what answers for a game whose executable carries no icon at all.
+        if ($steamLibraryIcon) { Add-IconCandidates $candidates @($steamLibraryIcon) $false 1 $true }
+        if ($candidates.Count -eq 0) {
+            if ($steam.installDir) { $reason = 'No icon matching "' + $steam.name + '" was found in its install folder.' }
+            else { $reason = '"' + $steam.name + '" is not installed in any Steam library.' }
         }
     } elseif ($aumid = Get-TargetAumid $appPath) {
         # Store apps are addressed by AppUserModelId, so there is no executable
@@ -1447,8 +1524,10 @@ try {
                 # decode (a truncated file, say) falls through to the next
                 # rather than costing the whole lookup; Square150x150Logo (the
                 # Start tile) is queued last of all, the fallback for when none
-                # of those decode either.
-                Add-IconCandidates $candidates (Get-LogoAssetCandidates $pkg.InstallLocation $sq44) $false 3 $true
+                # of those decode either. The picker is offered one of each:
+                # the other variants are the same artwork at other sizes.
+                $variants = if ($listAll) { 1 } else { 3 }
+                Add-IconCandidates $candidates (Get-LogoAssetCandidates $pkg.InstallLocation $sq44) $false $variants $true
                 Add-IconCandidates $candidates (Get-LogoAssetCandidates $pkg.InstallLocation $sq150) $false 1 $true
                 if ($candidates.Count -eq 0) {
                     $reason = 'No Square44x44Logo or Square150x150Logo asset was found on disk for "' + $aumid + '".'
@@ -1464,13 +1543,19 @@ try {
         $exe = Resolve-TargetExe $appPath
         $folder = $null
         if ($exe) { try { $folder = [System.IO.Path]::GetDirectoryName($exe) } catch { } }
-        if ($folder -and -not (Test-SharedFolder $folder)) {
-            Add-IconCandidates $candidates (Get-IconCandidates $folder ([System.IO.Path]::GetFileNameWithoutExtension($exe)) '*.ico') $false 5
+        $ownFolder = $folder -and -not (Test-SharedFolder $folder)
+        if ($ownFolder) {
+            Add-IconCandidates $candidates (Get-IconCandidates $folder ([System.IO.Path]::GetFileNameWithoutExtension($exe)) '*.ico' $listAll) $false (Get-Limit 5)
         }
         # Last, and most often the one that answers: the icon compiled into the
         # executable. An authored .ico beside it is the better image when there
         # is one, which is why this comes after the search rather than instead.
         if ($exe) { $candidates.Add([pscustomobject]@{ Path = $exe; FromExe = $true }) }
+        # The picker also offers the app's other executables. Never from a
+        # shared folder: System32's executables are not this app's.
+        if ($listAll -and $ownFolder) {
+            Add-IconCandidates $candidates (Get-IconCandidates $folder ([System.IO.Path]::GetFileNameWithoutExtension($exe)) '*.exe' $true) $true (Get-Limit 0)
+        }
         if ($candidates.Count -eq 0) { $reason = 'Could not work out where this application lives on disk.' }
     }
 
@@ -1478,32 +1563,33 @@ try {
     # extension is no guarantee of being an icon — Acrobat's Start Menu shortcut
     # points at an "_SC_Acrobat.ico" that is really a DLL — so a candidate that
     # fails to decode is passed over rather than failing the whole lookup.
+    #
+    # The same file can be queued twice (Steam's launch exe is usually also the
+    # one its name matches), and is only tried once. When listing, the same
+    # picture is also only offered once, wherever it came from.
     $failure = $null
-    foreach ($candidate in @($candidates | Select-Object -First 9)) {
+    $tried = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $pictures = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $icons = New-Object System.Collections.Generic.List[object]
+    $budget = if ($listAll) { 60 } else { 12 }
+    foreach ($candidate in $candidates) {
+        if (-not $tried.Add([string]$candidate.Path + '|' + [string]$candidate.FromExe)) { continue }
+        if ($tried.Count -gt $budget -or $icons.Count -ge ${ICON_LIST_MAX}) { break }
         try {
-            $png = $null
-            if ($candidate.RawImage) {
-                # A Store asset is a bare PNG, not an .ico container, so it skips
-                # Get-CandidateIcon/Select-IconFrame entirely.
-                $png = ConvertTo-ScaledImagePng $candidate.Path ${ICON_MAX_PX}
-                if (-not $png) { $failure = '"' + $candidate.Path + '" is not a readable image file.' }
-            } else {
-                $bytes = Get-CandidateIcon $candidate
-                if ($null -eq $bytes) {
-                    $failure = '"' + $candidate.Path + '" carries no icon of its own.'
-                } else {
-                    $frame = Select-IconFrame $bytes
-                    if (-not $frame) {
-                        $failure = '"' + $candidate.Path + '" is not a readable icon file.'
-                    } else {
-                        $png = ConvertTo-IconPng $bytes $frame ${ICON_MAX_PX}
-                    }
-                }
+            $rendered = Get-CandidatePng $candidate
+            $png = $rendered.png
+            if (-not $png) {
+                $failure = $rendered.failure
+                continue
             }
-            if (-not $png) { continue }
-            $out = @{ ok = $true; found = $true; path = $candidate.Path; width = $png.Width; height = $png.Height; png = $png.Base64 }
-            Write-Output (ConvertTo-Json -InputObject $out -Compress)
-            exit 0
+            if (-not $listAll) {
+                $out = @{ ok = $true; found = $true; path = $candidate.Path; width = $png.Width; height = $png.Height; png = $png.Base64 }
+                Write-Output (ConvertTo-Json -InputObject $out -Compress)
+                exit 0
+            }
+            if ($pictures.Add($png.Base64)) {
+                $icons.Add(@{ path = $candidate.Path; width = $png.Width; height = $png.Height; png = $png.Base64 })
+            }
         } catch {
             $failure = $_.Exception.Message
         }
@@ -1514,16 +1600,36 @@ try {
     if (-not $reason) {
         if ($failure) { $reason = $failure } else { $reason = 'No icon could be found for this app.' }
     }
-    Write-Output (ConvertTo-Json -InputObject @{ ok = $true; found = $false; reason = $reason } -Compress)
+    if ($listAll) {
+        $out = @{ ok = $true; icons = $icons.ToArray(); reason = $reason }
+        Write-Output (ConvertTo-Json -InputObject $out -Compress -Depth 4)
+    } else {
+        Write-Output (ConvertTo-Json -InputObject @{ ok = $true; found = $false; reason = $reason } -Compress)
+    }
 } catch {
     Write-Output (ConvertTo-Json -InputObject @{ ok = $false; error = $_.Exception.Message } -Compress)
 }
 `;
 }
 
-/** Embeds a value as a single-quoted JSON literal ('' escapes quotes). */
+/**
+ * PowerShell ends a single-quoted string at any of these, not just the ASCII
+ * apostrophe — so "Assassin’s Creed" would otherwise cut a literal short.
+ */
+const PS_QUOTES = /['‘’‚‛]/g;
+
+/** Embeds a string as a single-quoted PowerShell literal (a doubled quote escapes it). */
+function psString(value: string): string {
+	return "'" + value.replace(PS_QUOTES, "$&$&") + "'";
+}
+
+/**
+ * Embeds a value as a single-quoted JSON literal. Typographic quotes are
+ * written as JSON escapes, which keeps them out of the PowerShell literal.
+ */
 function psJson(value: unknown): string {
-	return "ConvertFrom-Json '" + JSON.stringify(value).replace(/'/g, "''") + "'";
+	const json = JSON.stringify(value).replace(/[‘-‛]/g, (c) => "\\u" + c.charCodeAt(0).toString(16));
+	return "ConvertFrom-Json '" + json.replace(/'/g, "''") + "'";
 }
 
 /**

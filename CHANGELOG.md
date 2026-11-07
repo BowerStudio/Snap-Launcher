@@ -4,6 +4,37 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] — 2026-11-07
+
+### Added
+
+- **Choose the key's icon.** A new _Choose icon…_ button under **Key image** in a Launch &
+  Position key lists every icon the plugin can find for the app, and the one you click becomes
+  the key's image. For a Steam game that's Steam's own icon, each executable and `.ico` in the
+  install folder, and Steam's library icon; for an ordinary app, its shortcut's icon, any `.ico`
+  beside it and its other executables. The choice stands until you pick a different app, and
+  _Auto_ goes back to the automatic choice.
+
+### Fixed
+
+- **Steam games get the icon of the executable Steam actually launches** (Windows). It is now
+  read from Steam's own records (`appcache\appinfo.vdf`) instead of guessed from the game's
+  name, so games whose executable is named nothing like the game — _Rock of Ages 2_ ships
+  `ROA2.exe` — get their full-size icon. Anti-cheat launchers Steam starts in front of a game
+  are skipped (Battlefield 6's carries EA's logo, not the game's). If Steam's records are
+  missing or in a format the plugin doesn't recognise, it falls back to the previous search.
+- **Executables named without a publisher or series prefix are recognised** (Windows).
+  _Tom Clancy's The Division_ ships `thedivision.exe`; it now matches as a run of the game's
+  whole words, so the key gets the 256px icon rather than a blurry 32px one.
+- **Steam games whose executable carries no icon now get one** (Windows). _Atom Zombie Smasher_
+  had no icon at all: when nothing else is found, the key uses the small icon Steam shows beside
+  the game in its library.
+- **Steam game names containing a typographic apostrophe** (’) no longer break icon lookup
+  and launching on Windows.
+
+Keys that found no icon under an earlier version look again automatically; keys that already
+have an icon keep it — use _Choose icon…_ to switch to a better one.
+
 ## [1.4.0] — 2026-11-06
 
 ### Added

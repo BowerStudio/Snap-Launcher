@@ -98,6 +98,46 @@
 			.pp-highlight.pp-preview {
 				background: rgba(26, 140, 255, 0.18);
 			}
+			.ip-panel {
+				margin: 4px 0 6px 6px;
+			}
+			.ip-grid {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+				margin-top: 4px;
+			}
+			.ip-tile {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				box-sizing: border-box;
+				width: 52px;
+				height: 52px;
+				margin: 0;
+				padding: 4px;
+				background: #3a3a3a;
+				border: 1px solid #565656;
+				border-radius: 4px;
+				color: #b0b0b0;
+				font:
+					600 11px/1 -apple-system,
+					"Segoe UI",
+					sans-serif;
+				cursor: pointer;
+			}
+			.ip-tile:hover {
+				border-color: #7a7a7a;
+			}
+			.ip-tile img {
+				max-width: 40px;
+				max-height: 40px;
+			}
+			.ip-tile.ip-selected {
+				background: #0a3f6e;
+				border: 2px solid #1a8cff;
+				color: #cfe6ff;
+			}
 		</style>
 	</head>
 	<body>
@@ -162,9 +202,16 @@
 		<sdpi-item label="Key image">
 			<sdpi-textfield setting="iconStatus" disabled placeholder="Looking for the app's icon…"></sdpi-textfield>
 		</sdpi-item>
+		<sdpi-item>
+			<sdpi-button id="icon-picker-toggle">Choose icon…</sdpi-button>
+		</sdpi-item>
+		<div id="icon-picker" class="ip-panel" hidden>
+			<div id="icon-picker-message" class="hint"></div>
+			<div id="icon-picker-grid" class="ip-grid" role="listbox" aria-label="Icons found for this app"></div>
+		</div>
 		<div class="hint">
-			The key shows the app's own icon when one can be found beside it. Drop your own image on the key to override
-			it.
+			The key shows the app's own icon when one can be found. Choose icon… lists every icon found for the app, if
+			you'd rather a different one. Drop your own image on the key to override both.
 		</div>
 
 		<sdpi-item label="Arguments">
@@ -346,5 +393,6 @@
 
 		<script type="module" src="position-picker.js"></script>
 		<script type="module" src="admin-helper.js"></script>
+		<script type="module" src="icon-picker.js"></script>
 	</body>
 </html>

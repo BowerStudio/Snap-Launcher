@@ -2,7 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import type { DidReceiveSettingsEvent } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 
-import { getBackend, type InstalledApp, type RunningApp } from "../platform";
+import { getBackend, type AppIcon, type InstalledApp, type RunningApp } from "../platform";
 
 const logger = streamDeck.logger.createScope("Pickers");
 
@@ -119,6 +119,8 @@ type IconedSettings = JsonObject & {
 	autoImage?: string;
 	iconStatus?: string;
 	iconLookup?: number;
+	iconSource?: string;
+	iconChoice?: string;
 };
 
 /**
@@ -128,8 +130,9 @@ type IconedSettings = JsonObject & {
  *
  *   1 - (unrecorded) the original lookup
  *   2 - Steam games use Steam's own icon; names match ignoring punctuation
+ *   3 - Steam games use the executable Steam launches, and its library icon
  */
-export const ICON_LOOKUP_VERSION = 2;
+export const ICON_LOOKUP_VERSION = 3;
 
 /**
  * Whether a key's icon needs looking up: its app has changed since the last
@@ -211,7 +214,7 @@ export async function applyAutoIcon<T extends IconedSettings>(action: IconAction
 		// Clearing the app puts the action's own image back on the key.
 		if (!appPath) {
 			await setImage(action, undefined);
-			await patchSettings(action, { iconFor: "", autoImage: "", iconStatus: "" });
+			await patchSettings(action, { iconFor: "", autoImage: "", iconStatus: "", iconSource: "", iconChoice: "" });
 			return;
 		}
 
@@ -223,6 +226,8 @@ export async function applyAutoIcon<T extends IconedSettings>(action: IconAction
 				iconLookup: ICON_LOOKUP_VERSION,
 				autoImage: result.icon.image,
 				iconStatus: `Set from ${result.icon.sourcePath || "the app's icon"}`,
+				iconSource: result.icon.sourcePath,
+				iconChoice: "",
 			});
 		} else {
 			await setImage(action, undefined);
@@ -231,6 +236,8 @@ export async function applyAutoIcon<T extends IconedSettings>(action: IconAction
 				iconLookup: ICON_LOOKUP_VERSION,
 				autoImage: "",
 				iconStatus: result.reason,
+				iconSource: "",
+				iconChoice: "",
 			});
 		}
 	} catch (e) {
@@ -244,6 +251,97 @@ export async function applyAutoIcon<T extends IconedSettings>(action: IconAction
 	} finally {
 		iconLookups.delete(lookup);
 	}
+}
+
+/**
+ * The icons last offered to each key's picker, by action instance, so choosing
+ * one applies exactly the image the user was shown without rendering it again.
+ */
+const iconLists = new Map<string, { appPath: string; icons: AppIcon[] }>();
+
+/** One tile of the Property Inspector's icon picker. */
+type IconChoice = { path: string; width: number; height: number; image: string };
+
+/**
+ * Sends the Property Inspector every icon found for the key's app, for the
+ * user to choose between. A "loading" message goes first: rendering every
+ * candidate takes a moment, and the picker should say so rather than sit
+ * empty. Never rejects; a failed scan is reported as no icons, with why.
+ */
+export async function sendAppIcons<T extends IconedSettings>(action: IconAction<T>): Promise<void> {
+	const settings = await action.getSettings();
+	const appPath = (settings.appPath ?? "").trim();
+	const reply = (body: { loading?: boolean; icons?: IconChoice[]; reason?: string }) =>
+		streamDeck.ui.sendToPropertyInspector({ event: "appIcons", appPath, ...body });
+
+	if (!appPath) {
+		await reply({ icons: [], reason: "Pick an application first." });
+		return;
+	}
+
+	await reply({ loading: true });
+	let icons: AppIcon[] = [];
+	let reason: string;
+	try {
+		const list = await queued(() => getBackend().listAppIcons(appPath));
+		icons = list.icons;
+		reason = list.reason;
+	} catch (e) {
+		reason = `Could not look for icons: ${e instanceof Error ? e.message : String(e)}`;
+		logger.error(`Failed to list icons for ${appPath}: ${reason}`);
+	}
+	iconLists.set(action.id, { appPath, icons });
+	await reply({
+		icons: icons.map((i) => ({ path: i.sourcePath, width: i.width, height: i.height, image: i.image })),
+		reason,
+	});
+}
+
+/**
+ * Applies the icon the user picked from the list, or — for an empty path —
+ * goes back to the automatic choice by running the lookup afresh.
+ *
+ * The choice is stored as the key's image exactly like an automatic one, so it
+ * survives restarts the same way, and it stands until the key's app changes.
+ */
+export async function chooseAppIcon<T extends IconedSettings>(
+	action: IconAction<T>,
+	sourcePath: string,
+): Promise<void> {
+	const settings = await action.getSettings();
+	const appPath = (settings.appPath ?? "").trim();
+	if (!appPath) {
+		return;
+	}
+
+	if (!sourcePath) {
+		// Forgetting which app the image was for is what makes the lookup run.
+		await applyAutoIcon(action, { ...settings, iconFor: "" });
+		return;
+	}
+
+	let offered = iconLists.get(action.id);
+	if (offered?.appPath !== appPath) {
+		// The plugin has restarted since the list was shown, or the app has
+		// changed under it: look again rather than apply a stale image.
+		offered = { appPath, icons: (await queued(() => getBackend().listAppIcons(appPath))).icons };
+		iconLists.set(action.id, offered);
+	}
+	const icon = offered.icons.find((i) => i.sourcePath === sourcePath);
+	if (!icon) {
+		logger.warn(`Chosen icon ${sourcePath} is no longer offered for ${appPath}.`);
+		return;
+	}
+
+	await setImage(action, icon.image);
+	await patchSettings(action, {
+		iconFor: appPath,
+		iconLookup: ICON_LOOKUP_VERSION,
+		autoImage: icon.image,
+		iconStatus: `Chosen: ${icon.sourcePath}`,
+		iconSource: icon.sourcePath,
+		iconChoice: icon.sourcePath,
+	});
 }
 
 /** Only keys carry an image; the manifest declares no other controller. */

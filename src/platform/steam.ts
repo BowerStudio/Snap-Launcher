@@ -202,10 +202,56 @@ const ARTWORK_HASH = /^([0-9a-f]{40})\.(jpg|png)$/i;
  * yields null, and the caller falls back to searching the install folder.
  */
 export function findSteamClientIcon(steamRoots: readonly string[], appId: string): string | null {
+	for (const { root, entries } of artworkCaches(steamRoots, appId)) {
+		for (const entry of entries) {
+			const hash = ARTWORK_HASH.exec(entry)?.[1];
+			if (!hash) {
+				continue;
+			}
+			const ico = path.join(root, "steam", "games", `${hash}.ico`);
+			if (existsSync(ico)) {
+				return ico;
+			}
+		}
+	}
+	return null;
+}
+
+/**
+ * The small icon Steam shows beside a game in its library list, or null when
+ * the client has none cached.
+ *
+ * This is the same publisher icon as findSteamClientIcon's, but only 32x32 and
+ * as a plain image file. It is worth having anyway: Steam writes the .ico only
+ * once a desktop shortcut is made, whereas this one is cached for every game in
+ * the library. Some games' executables carry no icon at all (Atom Zombie
+ * Smasher's shows Windows' generic one), which leaves this the only real icon
+ * there is.
+ */
+export function findSteamLibraryIcon(steamRoots: readonly string[], appId: string): string | null {
+	for (const { cache, entries } of artworkCaches(steamRoots, appId)) {
+		const entry = entries.find((name) => ARTWORK_HASH.test(name));
+		if (entry) {
+			return path.join(cache, entry);
+		}
+	}
+	return null;
+}
+
+/**
+ * Every readable appcache/librarycache/<appid> folder of the given Steam
+ * installations, each root once, with its entries sorted so a folder always
+ * yields the same file. A malformed app id yields nothing.
+ */
+function artworkCaches(
+	steamRoots: readonly string[],
+	appId: string,
+): { root: string; cache: string; entries: string[] }[] {
 	if (!/^\d+$/.test(appId)) {
-		return null;
+		return [];
 	}
 	const seen = new Set<string>();
+	const caches: { root: string; cache: string; entries: string[] }[] = [];
 	for (const root of steamRoots) {
 		const resolved = path.resolve(root);
 		if (seen.has(resolved.toLowerCase())) {
@@ -213,24 +259,14 @@ export function findSteamClientIcon(steamRoots: readonly string[], appId: string
 		}
 		seen.add(resolved.toLowerCase());
 
-		let entries: string[];
+		const cache = path.join(resolved, "appcache", "librarycache", appId);
 		try {
-			entries = readdirSync(path.join(resolved, "appcache", "librarycache", appId));
+			caches.push({ root: resolved, cache, entries: readdirSync(cache).sort() });
 		} catch {
-			continue;
-		}
-		for (const entry of entries.sort()) {
-			const hash = ARTWORK_HASH.exec(entry)?.[1];
-			if (!hash) {
-				continue;
-			}
-			const ico = path.join(resolved, "steam", "games", `${hash}.ico`);
-			if (existsSync(ico)) {
-				return ico;
-			}
+			// No artwork cached under this installation.
 		}
 	}
-	return null;
+	return caches;
 }
 
 /** Every library folder of every given installation, in order, deduplicated. */

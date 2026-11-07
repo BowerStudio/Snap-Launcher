@@ -1,5 +1,6 @@
 import type {
 	AdminHelperStatus,
+	AppIconList,
 	AppIconResult,
 	CaptureResult,
 	CloseConfig,
@@ -63,6 +64,13 @@ export type PlatformBackend = {
 	 * still works perfectly well.
 	 */
 	findAppIcon(appPath: string): Promise<AppIconResult>;
+
+	/**
+	 * Every distinct icon that could stand for the application, rendered the
+	 * same way, for the user to pick from when the automatic choice is wrong.
+	 * Like findAppIcon, finding none is an ordinary result.
+	 */
+	listAppIcons(appPath: string): Promise<AppIconList>;
 
 	/** Whether the administrator helper is set up. */
 	adminHelperStatus(): Promise<AdminHelperStatus>;

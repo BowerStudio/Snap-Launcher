@@ -7,6 +7,7 @@ import { after, test } from "node:test";
 import {
 	findSteamClientIcon,
 	findSteamGame,
+	findSteamLibraryIcon,
 	listSteamGames,
 	parseAppManifest,
 	parseLibraryPaths,
@@ -315,4 +316,28 @@ test("every Steam root is tried in turn", () => {
 	const empty = fakeArtwork("99", [], []);
 	const root = fakeArtwork("10", [`${HASH}.png`], [`${HASH}.ico`]);
 	assert.equal(findSteamClientIcon([empty, root], "10"), path.join(root, "steam", "games", `${HASH}.ico`));
+});
+
+test("Steam's library-list icon is the hash-named image in the artwork cache", () => {
+	const root = fakeArtwork("55040", ["header.jpg", `${HASH}.jpg`, "logo.png"], []);
+	assert.equal(
+		findSteamLibraryIcon([root], "55040"),
+		path.join(root, "appcache", "librarycache", "55040", `${HASH}.jpg`),
+	);
+});
+
+test("no hash-named image, no artwork cache, or a malformed app id yields no library icon", () => {
+	assert.equal(findSteamLibraryIcon([fakeArtwork("10", ["header.jpg", "logo.png"], [])], "10"), null);
+	const root = fakeArtwork("10", [`${HASH}.jpg`], []);
+	assert.equal(findSteamLibraryIcon([root], "20"), null);
+	assert.equal(findSteamLibraryIcon([root], "../10"), null);
+});
+
+test("the library icon is looked for in every Steam root in turn", () => {
+	const empty = fakeArtwork("99", [], []);
+	const root = fakeArtwork("10", [`${HASH}.png`], []);
+	assert.equal(
+		findSteamLibraryIcon([empty, root], "10"),
+		path.join(root, "appcache", "librarycache", "10", `${HASH}.png`),
+	);
 });

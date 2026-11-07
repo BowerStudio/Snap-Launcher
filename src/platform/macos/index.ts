@@ -6,6 +6,7 @@ import { toAppIconResult, type RawAppIcon } from "../icons";
 import { listSteamGames, resolveSteamTarget } from "../steam";
 import type {
 	AdminHelperStatus,
+	AppIconList,
 	AppIconResult,
 	CaptureResult,
 	CloseConfig,
@@ -109,6 +110,13 @@ export const macosBackend: PlatformBackend = {
 		const steam = resolveSteamTarget(steamRoots(), appPath);
 		const raw = await runOsascript<RawAppIcon>(buildAppIconScript(appPath, steam), OVERHEAD_MS);
 		return toAppIconResult(raw);
+	},
+
+	async listAppIcons(appPath: string): Promise<AppIconList> {
+		// An .app bundle names its one icon in Info.plist, so there is nothing
+		// further to choose between: the list is that icon, or nothing.
+		const result = await macosBackend.findAppIcon(appPath);
+		return result.found ? { icons: [result.icon], reason: "" } : { icons: [], reason: result.reason };
 	},
 
 	async adminHelperStatus(): Promise<AdminHelperStatus> {
