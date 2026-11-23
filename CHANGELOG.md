@@ -14,6 +14,14 @@ to follow [Semantic Versioning](https://semver.org/).
   worked out fresh each time, so it stays centred through resolution and monitor changes. A
   window bigger than the display is placed at its top-left so the title bar stays on screen. The
   key settings preview where the window will land. Works on Windows and macOS.
+- **Open any file, not just an app.** _Browse for a file_ in a Launch & Position key now accepts
+  any file — a text file, image, video, PDF, Unreal Engine `.uproject`, Blender scene — and
+  pressing the key opens it in its default app, as if you had double-clicked it. The window is
+  recognised by the file's name in its title bar, so it is snapped, centred, captured, minimized
+  and reused on the next press like an app's window, and the key takes the file's name and the
+  icon of its file type. _Title contains_ and the _Process name_ override cover apps that don't
+  show the file name; slow-loading projects need a longer _Wait_. Arguments are passed to apps
+  only. Works on Windows and macOS. The Close App action is unchanged and still picks an app.
 
 ## [1.5.0] — 2026-11-07
 

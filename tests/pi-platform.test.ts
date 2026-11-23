@@ -119,9 +119,23 @@ for (const page of ["launch.html", "close.html"]) {
 	test(`${page} sets no static accept filter on the file picker`, () => {
 		// A hard-coded accept would offer Windows file types on a Mac.
 		assert.ok(!/<sdpi-file[^>]*\saccept=/.test(html), `${page} must let the platform decide the filter`);
-		assert.match(html, /<sdpi-file[^>]*data-accept-windows="[^"]+"[^>]*data-accept-mac="[^"]+"/);
 	});
 }
+
+test("a Launch key can browse for any file, not only an app", () => {
+	// Whatever is picked that isn't an app opens in its default app, so the
+	// picker must not narrow the choice on either platform.
+	const html = readFileSync(new URL("launch.html", uiDir), "utf8");
+	const picker = /<sdpi-file[^>]*>/.exec(html);
+	assert.ok(picker, "launch.html has a file picker");
+	assert.ok(!/accept/.test(picker[0]), `the picker carries no filter of any kind: ${picker[0]}`);
+});
+
+test("a Close key still browses for an app", () => {
+	// Closing is by app. The filter is the platform's own application types.
+	const html = readFileSync(new URL("close.html", uiDir), "utf8");
+	assert.match(html, /<sdpi-file[^>]*data-accept-windows="[^"]+"[^>]*data-accept-mac="[^"]+"/);
+});
 
 test("the Virtual desktop section is Windows-only and keeps its setting", () => {
 	const html = readFileSync(new URL("launch.html", uiDir), "utf8");

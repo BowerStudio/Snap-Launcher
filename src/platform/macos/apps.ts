@@ -33,10 +33,38 @@ export function bundleDisplayName(bundlePath: string): string {
 }
 
 /**
+ * Whether a window title names a file — the counterpart of the Windows
+ * backend's Get-NamePattern, and held to the same table of cases in the tests.
+ *
+ * A key pointed at a document is opened by some other app, and that app may be
+ * showing a dozen other files; the one window to position is the one whose
+ * title carries this file's name. The name is matched whole — "a.txt" must not
+ * claim a window showing "data.txt" — and what follows it may be a dot, so a
+ * name given without its extension still finds a title that shows it with one.
+ *
+ * Every character of the name outside ASCII letters and digits is written as
+ * a unicode escape, which is what makes the match literal without a list of regex
+ * metacharacters to keep complete.
+ *
+ * Exported so tests can evaluate it directly: it is pure string handling.
+ */
+export const TITLE_HELPERS = `
+function titleNames(title, name) {
+    if (!title || !name) return false;
+    var literal = String(name).replace(/[^A-Za-z0-9]/g, function (c) {
+        return '\\\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
+    var pattern = new RegExp('(^|[^\\\\p{L}\\\\p{N}_.-])' + literal + '(?![\\\\p{L}\\\\p{N}_])', 'iu');
+    return pattern.test(String(title));
+}
+`;
+
+/**
  * Shared JXA helpers for resolving an identity to a bundle path or a running
  * application. Included by the app-discovery and window-control scripts alike.
  */
 export const APP_HELPERS = `
+${TITLE_HELPERS}
 var BUNDLE_PREFIX = ${JSON.stringify(BUNDLE_PREFIX)};
 
 function parseIdentity(identity) {
@@ -78,6 +106,37 @@ function resolveBundlePath(identity) {
         }
     }
     return null;
+}
+
+/**
+ * A key pointed at a document rather than an app: any file that exists and is
+ * not an application bundle. It is handed to /usr/bin/open as it is, and comes
+ * up in whatever app LaunchServices has registered for it — the same thing as
+ * double-clicking it in Finder.
+ *
+ * That app is what owns the document's window, so it is resolved here; opener
+ * is null when nothing is registered, which is an ordinary answer and not a
+ * failure. Returns null for an app, a bundle id, a Steam game, and a path that
+ * no longer exists (which must fail as a missing app, as it always has).
+ */
+function documentTarget(identity) {
+    if (STEAM) return null;
+    var path = parseIdentity(identity).bundlePath;
+    if (!path) return null;
+    path = path.replace(/[/]+$/, '');
+    if (!path.length || /\\.app$/i.test(path)) return null;
+    if (!$.NSFileManager.defaultManager.fileExistsAtPath(path)) return null;
+
+    var name = path.split('/').pop();
+    var dot = name.lastIndexOf('.');
+    var opener = null;
+    try {
+        var url = WORKSPACE.URLForApplicationToOpenURL($.NSURL.fileURLWithPath(path));
+        if (url && !url.isNil()) opener = ObjC.unwrap(url.path);
+    } catch (e) {
+        opener = null;
+    }
+    return { path: path, name: name, base: dot > 0 ? name.slice(0, dot) : name, opener: opener };
 }
 
 /** Where a running app lives on disk: its bundle, or its bare executable. */

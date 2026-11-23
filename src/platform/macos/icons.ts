@@ -50,6 +50,9 @@ export function buildAppIconScript(appPath: string, steam?: SteamTarget | null):
                 }
                 return null;
             }
+            // A document has no icon of its own to read: the key shows the
+            // icon of the app that opens it.
+            if (DOC) return DOC.opener;
             return resolveBundlePath(IDENTITY);
         }
 
@@ -102,11 +105,14 @@ export function buildAppIconScript(appPath: string, steam?: SteamTarget | null):
             }
         }
 
+        var DOC = documentTarget(IDENTITY);
         var bundlePath = targetBundle();
         if (!bundlePath) {
             var missing = STEAM
                 ? '"' + STEAM.name + '" is not installed in any Steam library.'
-                : 'Could not work out where this application lives on disk.';
+                : DOC
+                    ? 'macOS has no app set up to open "' + DOC.name + '", so there is no icon to show for it.'
+                    : 'Could not work out where this application lives on disk.';
             return { ok: true, found: false, reason: missing };
         }
 
