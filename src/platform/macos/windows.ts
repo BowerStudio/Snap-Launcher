@@ -134,7 +134,10 @@ function candidateWindows(identity, bundlePath, processNameOverride) {
 
 /** First candidate matching the title filter and not in the exclusion set. */
 function findTargetWindow(identity, bundlePath, processNameOverride, titleFilter, excludeKeys) {
-    var candidates = candidateWindows(identity, bundlePath, processNameOverride);
+    return pickWindow(candidateWindows(identity, bundlePath, processNameOverride), titleFilter, excludeKeys);
+}
+
+function pickWindow(candidates, titleFilter, excludeKeys) {
     var needle = (titleFilter || '').toLowerCase();
 
     for (var i = 0; i < candidates.length; i++) {
@@ -213,6 +216,141 @@ function targetRect(cfg) {
 }
 
 /**
+ * Every window of the app that opens a document, whatever it is showing. With
+ * nothing registered to open the file there is no app, and so no windows.
+ */
+function openerWindows(doc) {
+    if (!doc.opener) return [];
+    return candidateWindows(doc.opener, doc.opener, CFG.processName);
+}
+
+/**
+ * The windows showing a document: those of its app whose title names the file.
+ *
+ * The app's other windows must not count. A key for notes.txt that settled for
+ * a TextEdit window showing something else would never open notes.txt at all.
+ *
+ * An explicit Title filter stands in for the file's name, for the app whose
+ * title shows something else; callers apply the filter itself.
+ */
+function documentWindows(doc) {
+    return openerWindows(doc).filter(function (c) {
+        return titleNames(c.title, doc.base) || !!CFG.titleFilter;
+    });
+}
+
+/**
+ * Minimizes, positions and raises the window a launch ended up with, and
+ * reports the press. Shared by apps and documents: once the window is found,
+ * what happens to it is the same.
+ */
+function finishLaunch(target, launched) {
+    if (CFG.positionMode === 'minimize') {
+        setAttrValue(target.win, 'AXMinimized', true);
+        return {
+            ok: true,
+            launched: launched,
+            positioned: false,
+            movedDesktop: false,
+            pid: target.pid,
+            title: target.title
+        };
+    }
+
+    var rect = targetRect(CFG);
+    var positioned = false;
+    if (rect) {
+        applyRect(target.win, rect);
+        positioned = true;
+    } else {
+        setAttrValue(target.win, 'AXMinimized', false);
+    }
+
+    raise(target);
+
+    return {
+        ok: true,
+        launched: launched,
+        positioned: positioned,
+        movedDesktop: false,
+        pid: target.pid,
+        title: target.title
+    };
+}
+
+/**
+ * Opens (or focuses) a document, waits for its window, then hands it to
+ * finishLaunch like any other.
+ *
+ * The file goes to /usr/bin/open as it is, which is what double-clicking it in
+ * Finder does. Arguments are not passed on: they belong to a program.
+ */
+function launchDocument(doc) {
+    function key(c) { return c.key; }
+
+    var target = null;
+    var needLaunch = true;
+
+    if (CFG.focusIfRunning) {
+        target = pickWindow(documentWindows(doc), CFG.titleFilter, null);
+        if (target) needLaunch = false;
+    }
+
+    if (needLaunch) {
+        var before = documentWindows(doc).map(key);
+        var beforeOpener = openerWindows(doc).map(key);
+
+        // -g: opened in the background, so a document about to be minimized
+        // doesn't take focus on its way there.
+        var args = CFG.positionMode === 'minimize' ? ['-g', doc.path] : [doc.path];
+        if (runTool('/usr/bin/open', args) !== 0) {
+            fail('Could not open "' + doc.name + '".');
+        }
+
+        var deadline = Date.now() + Math.max(1, CFG.waitSeconds) * 1000;
+        var arrivedAt = 0;
+        while (Date.now() < deadline) {
+            target = pickWindow(documentWindows(doc), CFG.titleFilter, before);
+            if (target) break;
+            // Not every app names the file it is showing. A window its app
+            // did not have before is taken to be the document's, but only
+            // once it has stood for a moment without one naming the file
+            // turning up: many apps open under a title of their own and add
+            // the file's name once it has loaded.
+            var arrived = pickWindow(openerWindows(doc), CFG.titleFilter, beforeOpener);
+            if (!arrived) {
+                arrivedAt = 0;
+            } else if (!arrivedAt) {
+                arrivedAt = Date.now();
+            } else if (Date.now() - arrivedAt >= 1500) {
+                target = arrived;
+                break;
+            }
+            sleepMs(250);
+        }
+        if (!target) {
+            // The file may already have been open, in a window that predates
+            // the launch...
+            target = pickWindow(documentWindows(doc), CFG.titleFilter, null);
+        }
+        if (!target) {
+            // ...or its app may have reused a window without naming the file.
+            target = pickWindow(openerWindows(doc), CFG.titleFilter, null);
+        }
+        if (!target && CFG.positionMode === 'none') {
+            // The file has been handed to macOS, and the key wants nothing
+            // done to its window: there is nothing left that could have failed.
+            return { ok: true, launched: true, positioned: false, movedDesktop: false, pid: 0, title: doc.name };
+        }
+        if (!target) {
+            fail('Timed out waiting for a window showing "' + doc.name + '". Increase the wait time if it is slow to open. If the app that opens it does not put the file name in its window title, set Title contains.');
+        }
+    }
+
+    return finishLaunch(target, needLaunch);
+}
+
+/**
  * The bundle path for the configured app, or a failure naming the problem.
  *
  * A Steam game has no bundle path to resolve — it is identified by its install
@@ -263,6 +401,10 @@ export function buildLaunchScript(config: LaunchConfig, steam?: SteamTarget | nu
 		`
 ${jsConfig(config, steam)}
         assertTrusted();
+
+        // Anything that isn't an app is a document, opened in its default app.
+        var doc = documentTarget(CFG.appPath);
+        if (doc) return launchDocument(doc);
 
         var bundlePath = requireBundlePath(CFG.appPath);
         var target = null;
@@ -326,37 +468,7 @@ ${jsConfig(config, steam)}
             }
         }
 
-        if (CFG.positionMode === 'minimize') {
-            setAttrValue(target.win, 'AXMinimized', true);
-            return {
-                ok: true,
-                launched: needLaunch,
-                positioned: false,
-                movedDesktop: false,
-                pid: target.pid,
-                title: target.title
-            };
-        }
-
-        var rect = targetRect(CFG);
-        var positioned = false;
-        if (rect) {
-            applyRect(target.win, rect);
-            positioned = true;
-        } else {
-            setAttrValue(target.win, 'AXMinimized', false);
-        }
-
-        raise(target);
-
-        return {
-            ok: true,
-            launched: needLaunch,
-            positioned: positioned,
-            movedDesktop: false,
-            pid: target.pid,
-            title: target.title
-        };
+        return finishLaunch(target, needLaunch);
 `,
 		HELPERS,
 	);
@@ -372,10 +484,23 @@ export function buildCaptureScript(config: LaunchConfig, steam?: SteamTarget | n
 ${jsConfig(config, steam)}
         assertTrusted();
 
-        var bundlePath = requireBundlePath(CFG.appPath);
-        var target = findTargetWindow(CFG.appPath, bundlePath, CFG.processName, CFG.titleFilter, null);
-        if (!target) {
-            fail('"' + targetDescription(bundlePath) + '" does not appear to be running with a visible window. Start it, arrange the window, then capture.');
+        var doc = documentTarget(CFG.appPath);
+        var target = null;
+        if (doc) {
+            // A document whose app never names it in a title can still be
+            // captured from that app's window: the one a launch would end up
+            // positioning.
+            target = pickWindow(documentWindows(doc), CFG.titleFilter, null) ||
+                pickWindow(openerWindows(doc), CFG.titleFilter, null);
+            if (!target) {
+                fail('"' + doc.name + '" does not appear to be open in a window. Open it, arrange the window, then capture.');
+            }
+        } else {
+            var bundlePath = requireBundlePath(CFG.appPath);
+            target = findTargetWindow(CFG.appPath, bundlePath, CFG.processName, CFG.titleFilter, null);
+            if (!target) {
+                fail('"' + targetDescription(bundlePath) + '" does not appear to be running with a visible window. Start it, arrange the window, then capture.');
+            }
         }
 
         if (attrValue(target.win, 'AXMinimized') === true) {

@@ -144,6 +144,10 @@ public class AppWindow {
     public string Title;
     public string ProcessName;
     public string ProcessPath;
+    // Whether the window has a sizing frame (WS_THICKFRAME). Splash screens
+    // and tool windows don't, which is how a document's own window is told
+    // from the splash screen that comes up first under the same name.
+    public bool Resizable;
 }
 
 public static class WindowFinder {
@@ -169,6 +173,9 @@ public static class WindowFinder {
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetShellWindow();
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong(IntPtr hWnd, int index);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
@@ -218,6 +225,8 @@ public static class WindowFinder {
             int pid = (int)rawPid;
             string path = PathOf(pid, paths);
             if (path.Length == 0) return true;
+            // GWL_STYLE (-16), WS_THICKFRAME (0x00040000)
+            bool resizable = (GetWindowLong(hWnd, -16) & 0x00040000) != 0;
             string name = Path.GetFileNameWithoutExtension(path);
             if (string.Equals(name, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)) {
                 // Attribute the frame to the hosted app: the first child window
@@ -237,13 +246,14 @@ public static class WindowFinder {
                             ProcessId = hostedPid,
                             Title = title,
                             ProcessName = Path.GetFileNameWithoutExtension(hostedPath),
-                            ProcessPath = hostedPath
+                            ProcessPath = hostedPath,
+                            Resizable = resizable
                         });
                         return true;
                     }
                 }
             }
-            results.Add(new AppWindow { Handle = hWnd, ProcessId = pid, Title = title, ProcessName = name, ProcessPath = path });
+            results.Add(new AppWindow { Handle = hWnd, ProcessId = pid, Title = title, ProcessName = name, ProcessPath = path, Resizable = resizable });
             return true;
         }, IntPtr.Zero);
         return results;
@@ -393,6 +403,162 @@ function Resolve-PathPackage([string]$exePath) {
         return [pscustomobject]@{ Aumid = ($pkg.PackageFamilyName + '!' + [string]$app.Id); Display = $disp }
     }
     return $null
+}
+`;
+
+/**
+ * Documents: a key pointed at a file Windows opens rather than runs — a text
+ * file, an image, a video, an Unreal .uproject — which is handed to the shell
+ * and comes up in whatever app is registered for its type.
+ *
+ * That app is not named by the key, so two things an ordinary app key gets for
+ * free have to be worked out here: which processes can own the document's
+ * window, and which of their windows is showing this document rather than
+ * another one.
+ *
+ * The first comes from Windows' own file associations. A Store app is
+ * registered by AppUserModelId and reports no executable at all (Photos, Media
+ * Player), so that is asked for first; everything else reports the executable
+ * its "open" command runs. A type with nothing registered answers with
+ * OpenWith.exe, the "How do you want to open this file?" picker, which is the
+ * same as no answer.
+ *
+ * The second comes from the window's title, which nearly every app builds from
+ * the file's name ("notes.txt - Notepad", "MyGame - Unreal Editor"). The name
+ * is matched as a whole — "a.txt" must not claim a window showing "data.txt" —
+ * and with or without its extension, since plenty of apps drop it.
+ *
+ * Exported for tests.
+ */
+export const DOCUMENT_HELPERS = `
+# What Windows runs rather than opens. A shortcut that could not be followed to
+# a target is left to the shell like a program, exactly as before.
+$script:ProgramExtensions = @('.exe', '.com', '.bat', '.cmd', '.scr', '.pif', '.lnk')
+
+# True for a file that exists and is not a program. Existence is part of it: a
+# bare command name ("notepad") is no document, and a document that has been
+# moved or deleted should fail as a missing file rather than be searched for.
+function Test-DocumentPath([string]$p) {
+    if (-not $p) { return $false }
+    try {
+        $ext = [System.IO.Path]::GetExtension($p)
+        if ($ext -and ($script:ProgramExtensions -contains $ext.ToLower())) { return $false }
+        return [bool](Test-Path -LiteralPath $p -PathType Leaf)
+    } catch { return $false }
+}
+
+# A name as a title or a command line carries it: not run into a longer name on
+# either side. What follows may be a dot, so "notes" still finds "notes.txt".
+function Get-NamePattern([string]$name) {
+    return '(?<![\\p{L}\\p{N}_.-])' + [System.Text.RegularExpressions.Regex]::Escape($name) + '(?![\\p{L}\\p{N}_])'
+}
+
+function Test-NameIn([string]$text, [string]$pattern) {
+    if (-not $text) { return $false }
+    return [System.Text.RegularExpressions.Regex]::IsMatch($text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+}
+
+# Whether a process was started with a file on its command line. The app
+# registered for a type is often only a launcher that hands the file on -
+# UnrealVersionSelector starts UnrealEditor, blender-launcher starts blender -
+# and the process it starts is recorded nowhere else. A process that cannot be
+# asked (it has exited, or is elevated) simply was not. Asked once per
+# process: a command line never changes.
+$script:CommandLineNames = @{}
+function Test-StartedWithFile([int]$processId, [string]$pattern) {
+    $key = [string]$processId + '|' + $pattern
+    if (-not $script:CommandLineNames.ContainsKey($key)) {
+        $named = $false
+        try {
+            $p = Get-CimInstance -ClassName Win32_Process -Filter ('ProcessId = ' + $processId) -Property CommandLine -ErrorAction Stop
+            if ($p) { $named = Test-NameIn ([string]$p.CommandLine) $pattern }
+        } catch { }
+        $script:CommandLineNames[$key] = $named
+    }
+    return $script:CommandLineNames[$key]
+}
+
+# Compiled only when a document is involved: an ordinary app key never pays
+# for it.
+function Initialize-FileAssociation {
+    if ('SnapFileAssoc' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SnapFileAssoc {
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    private static extern int AssocQueryString(uint flags, int str, string assoc, string extra, StringBuilder buffer, ref uint size);
+
+    // One ASSOCSTR value for a file extension, or "" when the type has none.
+    public static string Query(int str, string extension) {
+        uint size = 0;
+        AssocQueryString(0, str, extension, null, null, ref size);
+        if (size == 0) return "";
+        StringBuilder sb = new StringBuilder((int)size);
+        return AssocQueryString(0, str, extension, null, sb, ref size) == 0 ? sb.ToString() : "";
+    }
+}
+'@
+}
+
+# The app registered to open a file: by process name for a classic app, by
+# install location for a Store app. Every field is empty when Windows has
+# nothing registered for the type - finding no opener is an ordinary answer,
+# not a failure, so nothing here throws.
+function Get-DocumentOpener([string]$path) {
+    $opener = [pscustomobject]@{ ProcessName = $null; PackageRoot = $null; Aumid = $null; Exe = $null; Icon = $null }
+    try {
+        $ext = [System.IO.Path]::GetExtension($path)
+        if (-not $ext) { return $opener }
+        Initialize-FileAssociation
+
+        # ASSOCSTR_DEFAULTICON (15): the icon Explorer shows for the type.
+        $opener.Icon = [SnapFileAssoc]::Query(15, $ext)
+
+        # ASSOCSTR_APPID (21). Classic apps answer too ("MSEdge", "Chrome"),
+        # but only a Store app's is a FamilyName!AppId.
+        $appId = [SnapFileAssoc]::Query(21, $ext)
+        if ($appId -and $appId.Contains('!')) {
+            $pkg = Get-PackageForAumid $appId
+            if ($pkg -and $pkg.InstallLocation) {
+                $opener.Aumid = $appId
+                $opener.PackageRoot = $pkg.InstallLocation + '\\'
+                return $opener
+            }
+        }
+
+        # ASSOCSTR_EXECUTABLE (2).
+        $exe = [SnapFileAssoc]::Query(2, $ext)
+        if (-not $exe -or ([System.IO.Path]::GetFileName($exe) -ieq 'OpenWith.exe')) { return $opener }
+        if (Test-PackagedPath $exe) {
+            $app = Resolve-PathPackage $exe
+            $pkg = if ($app) { Get-PackageForAumid $app.Aumid } else { $null }
+            if ($pkg -and $pkg.InstallLocation) {
+                $opener.Aumid = $app.Aumid
+                $opener.PackageRoot = $pkg.InstallLocation + '\\'
+                return $opener
+            }
+        }
+        $opener.Exe = $exe
+        $opener.ProcessName = [System.IO.Path]::GetFileNameWithoutExtension($exe)
+    } catch { }
+    return $opener
+}
+
+# Everything the window scripts need to know about a document.
+function Get-DocumentTarget([string]$path) {
+    $name = [System.IO.Path]::GetFileName($path)
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($path)
+    if (-not $base) { $base = $name }
+    return [pscustomobject]@{
+        Path = $path
+        Name = $name
+        NamePattern = Get-NamePattern $name
+        BasePattern = Get-NamePattern $base
+        Opener = Get-DocumentOpener $path
+    }
 }
 `;
 
@@ -730,19 +896,70 @@ function Resolve-TargetExe([string]$p) {
  * directory, however, is exactly the boundary of "windows belonging to this
  * game" — launchers, anti-cheat front-ends and the game itself all live inside
  * it.
+ *
+ * A document (see DOCUMENT_HELPERS) is the one target whose windows are not
+ * simply "every window of its process". The process is whichever app opens the
+ * file, and that app may be showing a dozen other files: a key for notes.txt
+ * must not settle for a Notepad window showing something else, or pressing it
+ * would never open notes.txt at all. So a document's candidates are the windows
+ * that name the file, and the app's other windows are only ever a fallback the
+ * launch script reaches for once the file has been opened (Find-OpenerWindow).
  */
 const FIND_WINDOW = `
 ${SHORTCUTS}
-function Get-CandidateWindows {
+${DOCUMENT_HELPERS}
+# Every window of the target's process: named outright, or living inside the
+# package or game folder.
+function Get-AppWindows {
     $wins = @([WindowFinder]::ListAll())
     if ($procName) {
         return @($wins | Where-Object { $_.ProcessName -eq $procName })
     }
-    return @($wins | Where-Object { $_.ProcessPath.StartsWith($pkgRoot, [System.StringComparison]::OrdinalIgnoreCase) })
+    if ($pkgRoot) {
+        return @($wins | Where-Object { $_.ProcessPath.StartsWith($pkgRoot, [System.StringComparison]::OrdinalIgnoreCase) })
+    }
+    # Only a document can get here: nothing is registered to open its type.
+    return @()
 }
 
-function Find-TargetWindow([string]$titleFilter, [long[]]$exclude) {
-    $wins = Get-CandidateWindows
+# Whether a window is showing the document.
+#
+# It has to be resizable: a splash screen carries the project's name as well
+# ("Unreal Editor - MyGame"), comes up first, and is not the window anyone
+# wants positioned.
+#
+# Its title has to name the file, and it has to belong to the app that opens
+# the file or to a process started with it - a name alone proves nothing, since
+# Visual Studio with MyGame.sln open is titled "MyGame" too. Only when nothing
+# is registered for the type, so that no app can be expected, does the full
+# file name in any window's title stand on its own.
+#
+# An explicit Title filter stands in for the file's name, for the app whose
+# title shows something else (a browser shows a page's own title): callers
+# apply the filter itself.
+function Test-DocumentWindow($w) {
+    if (-not $w.Resizable) { return $false }
+    $own = $false
+    if ($procName) { $own = ($w.ProcessName -eq $procName) }
+    elseif ($pkgRoot) { $own = $w.ProcessPath.StartsWith($pkgRoot, [System.StringComparison]::OrdinalIgnoreCase) }
+    # A Process name override says outright which process it is.
+    if ($cfg.processName -and -not $own) { return $false }
+
+    if (Test-NameIn $w.Title $doc.BasePattern) {
+        if ($own) { return $true }
+        if (Test-StartedWithFile ([int]$w.ProcessId) $doc.NamePattern) { return $true }
+        if (-not $procName -and -not $pkgRoot) { return (Test-NameIn $w.Title $doc.NamePattern) }
+        return $false
+    }
+    return [bool]($cfg.titleFilter -and $own)
+}
+
+function Get-CandidateWindows {
+    if (-not $doc) { return Get-AppWindows }
+    return @([WindowFinder]::ListAll() | Where-Object { Test-DocumentWindow $_ })
+}
+
+function Select-TargetWindow($wins, [string]$titleFilter, [long[]]$exclude) {
     if ($titleFilter) {
         $pattern = '*' + [System.Management.Automation.WildcardPattern]::Escape($titleFilter) + '*'
         $wins = @($wins | Where-Object { $_.Title -like $pattern })
@@ -753,6 +970,17 @@ function Find-TargetWindow([string]$titleFilter, [long[]]$exclude) {
     $w = $wins | Select-Object -First 1
     if (-not $w) { return $null }
     return [pscustomobject]@{ MainWindowHandle = $w.Handle; Id = $w.ProcessId; MainWindowTitle = $w.Title }
+}
+
+function Find-TargetWindow([string]$titleFilter, [long[]]$exclude) {
+    return Select-TargetWindow (Get-CandidateWindows) $titleFilter $exclude
+}
+
+# Documents only: a window of the app that opens the file, whatever its title
+# says. For the app that never names what it is showing - a media player's
+# title is its own name - this is the only way to find the window at all.
+function Find-OpenerWindow([string]$titleFilter, [long[]]$exclude) {
+    return Select-TargetWindow (Get-AppWindows | Where-Object { $_.Resizable }) $titleFilter $exclude
 }
 
 # Resolving the target runs before each script's own try block, so it carries
@@ -766,11 +994,14 @@ $resolveError = $null
 try {
     $aumid = $null
     $exePath = $null
+    $doc = $null
     if (-not $steam) {
         $aumid = Get-TargetAumid $cfg.appPath
         if (-not $aumid) {
             $exePath = Resolve-TargetExe $cfg.appPath
-            if (Test-PackagedPath $exePath) {
+            if (Test-DocumentPath $exePath) {
+                $doc = Get-DocumentTarget $exePath
+            } elseif (Test-PackagedPath $exePath) {
                 $a = Resolve-PathPackage $exePath
                 if ($a) { $aumid = $a.Aumid }
             }
@@ -792,12 +1023,20 @@ try {
         if (-not $procName -and -not $pkgRoot) {
             throw ('Could not find an installed Store package for "' + $aumid + '". Re-pick the app, or set a Process name override in the key settings.')
         }
+    } elseif ($doc) {
+        # A document's windows belong to whatever opens it. Finding no app at
+        # all is not an error: the file can still be handed to Windows, which
+        # will ask what to open it with.
+        if (-not $procName) {
+            $procName = $doc.Opener.ProcessName
+            $pkgRoot = $doc.Opener.PackageRoot
+        }
     } elseif (-not $procName) {
         $procName = [System.IO.Path]::GetFileNameWithoutExtension($exePath)
         if (-not $procName) { throw 'Could not determine a process name from the application path.' }
     }
 
-    $targetDesc = if ($steam) { $steam.name } elseif ($procName) { $procName } else { $aumid }
+    $targetDesc = if ($steam) { $steam.name } elseif ($doc) { $doc.Name } elseif ($procName) { $procName } else { $aumid }
 } catch {
     $resolveError = $_.Exception.Message
 }
@@ -1149,6 +1388,14 @@ function Get-ShortcutIcon([string]$lnk) {
         $sh = New-Object -ComObject WScript.Shell
         $location = [string]$sh.CreateShortcut($lnk).IconLocation
     } catch { return $null }
+    return Resolve-IconLocation $location
+}
+
+# Turns an icon location as Windows records one - "C:\\app\\app.ico,0", with or
+# without quotes and index - into a candidate, or $null when it names nothing
+# this can read. A shortcut's icon and a file type's icon are both written this
+# way.
+function Resolve-IconLocation([string]$location) {
     if (-not $location) { return $null }
 
     $index = 0
@@ -1346,6 +1593,17 @@ function ConvertTo-ScaledImagePng([string]$path, [int]$maxPx) {
 $script:LogoQualifierBlacklist = @('altform-lightunplated', 'contrast-black', 'contrast-white', 'theme-light')
 $script:LogoImageExtensions = @('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.tif')
 
+# A Store app registers a file type's icon as a reference into its package,
+# "@{<package full name>?ms-resource://<name>/Files/Assets/txtfile.png}", not
+# as a path. The part after /Files/ is the same kind of logical path a manifest
+# names its logos by, so it is resolved the same way; anything else is $null.
+function Get-PackageAssetPath([string]$reference) {
+    if (-not $reference) { return $null }
+    $m = [System.Text.RegularExpressions.Regex]::Match($reference, '^@\\{[^?]+\\?ms-resource://[^/]+/Files/(.+)\\}$')
+    if (-not $m.Success) { return $null }
+    return $m.Groups[1].Value.Replace('/', '\\')
+}
+
 function Get-LogoAssetCandidates([string]$installLocation, [string]$logicalPath) {
     if (-not $installLocation -or -not $logicalPath) { return @() }
 
@@ -1458,6 +1716,7 @@ $steamLibraryIcon = ${steam?.libraryIcon ? psJson(steam.libraryIcon) : "$null"}
 $listAll = ${listAll ? "$true" : "$false"}
 ${APPX}
 ${SHORTCUTS}
+${DOCUMENT_HELPERS}
 ${ICON_RESOURCES}
 ${ICON_HELPERS}
 
@@ -1485,7 +1744,34 @@ try {
     $candidates = New-Object System.Collections.Generic.List[object]
     $reason = $null
 
-    if ($steam) {
+    # A document has no icon of its own. Windows shows the one registered for
+    # its file type, so that comes first; after it, the app that opens the file
+    # is looked up exactly as if the key had been pointed at that app.
+    $noOpener = $false
+    if (-not $steam -and -not (Get-TargetAumid $appPath)) {
+        $document = Resolve-TargetExe $appPath
+        if (Test-DocumentPath $document) {
+            $opener = Get-DocumentOpener $document
+            $typeIcon = Resolve-IconLocation $opener.Icon
+            if ($typeIcon) { $candidates.Add($typeIcon) }
+            if ($opener.Aumid) {
+                $assetPath = Get-PackageAssetPath $opener.Icon
+                if ($assetPath) { Add-IconCandidates $candidates (Get-LogoAssetCandidates $opener.PackageRoot $assetPath) $false 3 $true }
+                $appPath = 'shell:AppsFolder\\' + $opener.Aumid
+            } elseif ($opener.Exe) {
+                $appPath = $opener.Exe
+            } else {
+                $noOpener = $true
+                if ($candidates.Count -eq 0) {
+                    $reason = 'Windows has no app set up to open "' + [System.IO.Path]::GetFileName($document) + '", so there is no icon to show for it.'
+                }
+            }
+        }
+    }
+
+    if ($noOpener) {
+        # Nothing further to look in.
+    } elseif ($steam) {
         # Steam's own icon for the game comes first: it is the publisher's
         # icon, exactly as Steam shows it. Then the executable Steam itself
         # launches, as recorded in its app metadata - the game's own exe by
@@ -1744,6 +2030,10 @@ try {
 
     if ($needLaunch) {
         $before = @(Get-CandidateWindows | ForEach-Object { $_.Handle.ToInt64() })
+        # A document also remembers the windows its app already had, so that
+        # one arriving with the file can be told from them (see below).
+        $beforeOpener = @()
+        if ($doc) { $beforeOpener = @(Get-AppWindows | ForEach-Object { $_.Handle.ToInt64() }) }
 
         if ($steam) {
             # Handed to Steam as a URL, so the client starts first if it has to
@@ -1754,8 +2044,12 @@ try {
             $sp = @{ FilePath = ('shell:AppsFolder\\' + $aumid) }
             if ($cfg.launchArgs) { $sp['ArgumentList'] = $cfg.launchArgs }
         } else {
+            # A program is started; anything else is handed to the shell, which
+            # opens it in the app registered for its type - the same thing as
+            # double-clicking it. Arguments belong to a program, so a document
+            # is opened without them.
             $sp = @{ FilePath = $cfg.appPath }
-            if ($cfg.launchArgs) { $sp['ArgumentList'] = $cfg.launchArgs }
+            if ($cfg.launchArgs -and -not $doc) { $sp['ArgumentList'] = $cfg.launchArgs }
             # Ask for a minimized first show, so apps that honor the startup
             # show state never flash up. Apps that ignore it are minimized
             # once their window appears, below.
@@ -1765,6 +2059,14 @@ try {
                     $dir = [System.IO.Path]::GetDirectoryName($cfg.appPath)
                     if ($dir -and (Test-Path -LiteralPath $dir)) { $sp['WorkingDirectory'] = $dir }
                 } catch { }
+            }
+            if ($doc) {
+                # Some apps (Photos is one) ignore the working directory the
+                # shell is handed and inherit this process's instead - the
+                # plugin's own folder, which could then not be updated or
+                # removed for as long as the app, or the spare process it
+                # leaves behind, kept running. Give them the user's home.
+                try { [System.IO.Directory]::SetCurrentDirectory([Environment]::GetFolderPath('UserProfile')) } catch { }
             }
         }
         Start-Process @sp | Out-Null
@@ -1781,9 +2083,21 @@ try {
         }
 
         $deadline = (Get-Date).AddSeconds([Math]::Max(1, [int]$cfg.waitSeconds))
+        $arrivedAt = $null
         while ((Get-Date) -lt $deadline) {
             $target = Find-TargetWindow $cfg.titleFilter $before
             if ($target) { break }
+            if ($doc) {
+                # Not every app names the file it is showing. A window its app
+                # did not have before the launch is taken to be the document's
+                # - but only once it has stood for a moment without a window
+                # naming the file turning up, since many apps open under a
+                # title of their own and add the file's name once it has loaded.
+                $arrived = Find-OpenerWindow $cfg.titleFilter $beforeOpener
+                if (-not $arrived) { $arrivedAt = $null }
+                elseif (-not $arrivedAt) { $arrivedAt = Get-Date }
+                elseif (((Get-Date) - $arrivedAt).TotalMilliseconds -ge 1500) { $target = $arrived; break }
+            }
             Start-Sleep -Milliseconds 250
         }
         if (-not $target) {
@@ -1791,7 +2105,24 @@ try {
             # pre-existing window.
             $target = Find-TargetWindow $cfg.titleFilter @()
         }
+        if (-not $target -and $doc) {
+            # ...and an app that reuses its window without naming the file in
+            # it leaves only that window to go by.
+            $target = Find-OpenerWindow $cfg.titleFilter @()
+        }
+        if (-not $target -and $doc -and $cfg.positionMode -eq 'none' -and -not $cfg.virtualDesktop) {
+            # The file has been handed to Windows, and the key wants nothing
+            # done to its window: there is nothing left that could have failed.
+            # (What opens it may have no window to find - or Windows may still
+            # be asking which app to use.)
+            $out = @{ ok = $true; launched = $true; positioned = $false; movedDesktop = $false; pid = 0; title = $doc.Name }
+            Write-Output (ConvertTo-Json -InputObject $out -Compress)
+            exit 0
+        }
         if (-not $target) {
+            if ($doc) {
+                throw ('Timed out waiting for a window showing "' + $doc.Name + '". Increase the wait time if it is slow to open. If the app that opens it does not put the file name in its window title, set Title contains - or a Process name override if the window belongs to a different app.')
+            }
             throw ('Timed out waiting for a window of "' + $targetDesc + '". Increase the wait time, or set a Process name override if the launcher differs from the windowed process.')
         }
     }
@@ -1911,7 +2242,11 @@ try {
     if ($resolveError) { throw $resolveError }
 
     $target = Find-TargetWindow $cfg.titleFilter @()
+    # A document whose app never names it in a title can still be captured
+    # from that app's window - the one a launch would end up positioning.
+    if (-not $target -and $doc) { $target = Find-OpenerWindow $cfg.titleFilter @() }
     if (-not $target) {
+        if ($doc) { throw ('"' + $doc.Name + '" does not appear to be open in a window. Open it, arrange the window, then capture.') }
         throw ('"' + $targetDesc + '" does not appear to be running with a visible window. Start it, arrange the window, then capture.')
     }
 

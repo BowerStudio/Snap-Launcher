@@ -275,8 +275,10 @@ test("a game that isn't being positioned is not waited for", () => {
 	const script = buildLaunchScript(steamLaunch({ positionMode: "none" }), steamGame());
 	assert.ok(script.includes("if (STEAM && CFG.positionMode === 'none') {"), "the wait is skipped outright");
 
+	// The last wait in the script is the app's own: the helper that opens a
+	// document carries a wait loop too, and comes earlier in the text.
 	const skip = script.indexOf("if (STEAM && CFG.positionMode === 'none') {");
-	const wait = script.indexOf("var deadline = Date.now()");
+	const wait = script.lastIndexOf("var deadline = Date.now()");
 	assert.ok(skip !== -1 && wait !== -1 && skip < wait, "and skipped before the wait loop, not after it");
 });
 

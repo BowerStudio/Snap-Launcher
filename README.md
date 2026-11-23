@@ -59,13 +59,27 @@ The **Choose from** selector switches between four ways of picking an app. All f
 - **Running apps** — every app that currently has a visible window. Start the app, click the refresh icon, pick it from the list. Works for everything, including Store apps on Windows.
 - **Installed apps** — everything installed on the machine, no need to start the app first. On Windows that's Start Menu programs plus Microsoft Store apps; on macOS it's `/Applications`, `/System/Applications`, and `~/Applications` (including one level of subfolders like Utilities). Click the refresh icon after installing something new.
 - **Steam games** — every game installed in your Steam libraries. See [Steam games](#steam-games).
-- **Browse for a file** — point straight at an `.exe`, `.lnk`, `.bat`, or `.cmd` on Windows, or an `.app` bundle on macOS.
+- **Browse for a file** — point straight at an app (an `.exe`, `.lnk`, `.bat`, or `.cmd` on Windows, or an `.app` bundle on macOS), or at **any other file**. See [Opening a file](#opening-a-file).
 
 Picking an app also sets the key's title to the app's name (e.g. "WhatsApp") and gives it the app's own icon — nothing to configure. This works for classic apps, Steam games, and (Windows only, since Store apps don't exist on macOS) Microsoft Store apps, whose icon comes from the artwork the app's package declares rather than from an executable. Anything you type in Stream Deck's own **Title** field always takes precedence over the auto-title, and dropping your own image on the key always wins over the auto-icon.
 
 If the automatic icon isn't the one you want, click **Choose icon…** under **Key image**: it shows every icon found for the app (for a Steam game, Steam's own icon, each executable and icon file in its install folder, and Steam's small library icon), and the one you click becomes the key's image. **Auto** goes back to the automatic choice, and picking a different app resets it.
 
 On macOS an app is remembered by its **bundle identifier** wherever possible, so a key keeps working after the app is updated, renamed, or moved between `/Applications` and `~/Applications`.
+
+## Opening a file
+
+**Browse for a file** isn't limited to apps. Pick a text file, an image, a video, a PDF, an Unreal Engine `.uproject`, a Blender scene — anything — and pressing the key opens it in whatever app your system uses for that kind of file, exactly as if you had double-clicked it. Change the default app in Windows or macOS and the key follows.
+
+Everything else about the key works as it does for an app: the window is snapped to its zone, restored to a captured position, centred, minimized or left alone; **Capture** reads the position of the window the file is open in; and on Windows the file can be opened on a named virtual desktop. The key is titled with the file's name and takes the icon of the file's type (or of the app that opens it).
+
+- **The window is recognised by the file's name in its title bar** — `notes.txt - Notepad`, `holiday.png - Photos`, `MyGame - Unreal Editor`. Press the key again while the file is open and that window is brought back and repositioned rather than opened a second time.
+- **If the app doesn't show the file's name**, the key takes the window the app opens for it. If it picks the wrong window, fill in **Title contains** with some text that window's title does have — or, when the window belongs to a different program than the one the file type is registered to, set the **Process name** override.
+- **Slow openers need a longer wait.** A project that takes a minute to load (an Unreal Engine project, say) needs **Wait (seconds)** raised to match, or the key reports that it timed out before the editor's window appeared.
+- **Arguments are for apps only** — they're ignored when the key opens a file.
+- With **Don't move the window**, a file that opens without a window of its own to find (a tab in an already-open browser, for instance) still counts as a successful press.
+
+The **Close App** action still closes _apps_, so its file picker only offers apps.
 
 ## Steam games
 
@@ -151,20 +165,20 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 
 ### All settings
 
-| Setting                                           | Section         | What it does                                                                                                                                                                    |
-| ------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Choose from                                       | Application     | Which picker is shown: **Running apps**, **Installed apps**, **Steam games**, or **Browse for a file**. All four set the same app.                                              |
-| Running / Installed apps / Steam games / App path | Application     | The app to launch. The **Selected app** line below always shows the current choice.                                                                                             |
-| Arguments                                         | Application     | Optional command-line arguments passed on launch. For a Steam game they're passed on top of its Steam launch options.                                                           |
-| If already running                                | Launch          | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance.                                                                             |
-| Wait (seconds)                                    | Launch          | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. Unused for a Steam game that isn't being positioned, which is never waited for. |
-| Desktop name                                      | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS.                |
-| Positioning                                       | Window position | **Monitor & snap zone**, **Custom position**, **Don't move the window**, or **Start minimized**. The rows below it change to match the mode.                                    |
-| Monitor / Zone                                    | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display.                                                                         |
-| X/Y/Width/Height + Capture                        | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand.                                                                                              |
-| Placement (Centre on a display) + Display         | Window position | Custom mode only: centre the window on the chosen display at the Width/Height set, instead of using X/Y. The position follows resolution and layout changes.                    |
-| Title contains                                    | Advanced        | Only match windows whose title contains this text — disambiguates multi-window apps.                                                                                            |
-| Process name                                      | Advanced        | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed.                                                       |
+| Setting                                       | Section         | What it does                                                                                                                                                                    |
+| --------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Choose from                                   | Application     | Which picker is shown: **Running apps**, **Installed apps**, **Steam games**, or **Browse for a file**. All four set the same app.                                              |
+| Running / Installed apps / Steam games / File | Application     | The app to launch, or the file to open in its default app. The **Selected app** line below always shows the current choice.                                                     |
+| Arguments                                     | Application     | Optional command-line arguments passed on launch. For a Steam game they're passed on top of its Steam launch options. Ignored when the key opens a file in its default app.     |
+| If already running                            | Launch          | Ticked (default): reuse and reposition the existing window. Unticked: always launch a new instance.                                                                             |
+| Wait (seconds)                                | Launch          | How long to wait for the window after launching (default 10) — raise it for slow-starting apps. Unused for a Steam game that isn't being positioned, which is never waited for. |
+| Desktop name                                  | Virtual desktop | Windows 11 virtual desktop to run the app on (created if missing, switched to on press). Empty = current desktop. Windows only — the section is hidden on macOS.                |
+| Positioning                                   | Window position | **Monitor & snap zone**, **Custom position**, **Don't move the window**, or **Start minimized**. The rows below it change to match the mode.                                    |
+| Monitor / Zone                                | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display.                                                                         |
+| X/Y/Width/Height + Capture                    | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand.                                                                                              |
+| Placement (Centre on a display) + Display     | Window position | Custom mode only: centre the window on the chosen display at the Width/Height set, instead of using X/Y. The position follows resolution and layout changes.                    |
+| Title contains                                | Advanced        | Only match windows whose title contains this text — disambiguates multi-window apps.                                                                                            |
+| Process name                                  | Advanced        | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed.                                                       |
 
 **Close App** keys share the Application and Advanced settings above, plus:
 

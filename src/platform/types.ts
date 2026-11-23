@@ -19,9 +19,13 @@ export type LaunchConfig = {
 	/**
 	 * Opaque per-platform application identity. Windows: an exe/.lnk path or
 	 * "shell:AppsFolder\<AUMID>". macOS: an .app bundle path or bundle id.
-	 * Either platform additionally accepts "steam:<appid>" — see SteamTarget.
+	 * Either platform additionally accepts "steam:<appid>" — see SteamTarget —
+	 * and the path of any other file (a document, image, video, project),
+	 * which is opened in its default app and whose window is found by the
+	 * file's name in the title.
 	 */
 	appPath: string;
+	/** Passed to apps only; ignored when appPath is a document. */
 	launchArgs: string;
 	titleFilter: string;
 	processName: string;

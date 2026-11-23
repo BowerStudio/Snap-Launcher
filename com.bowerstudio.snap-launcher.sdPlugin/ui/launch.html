@@ -192,11 +192,16 @@
 			— the client starts first if it isn't already running.
 		</div>
 
-		<sdpi-item label="App path" class="source-browse" hidden>
-			<!-- The accept filter is set from the plugin's platform: an .app
-			     bundle on macOS, executables and shortcuts on Windows. -->
-			<sdpi-file setting="appPath" data-accept-windows=".exe,.lnk,.bat,.cmd" data-accept-mac=".app"></sdpi-file>
+		<sdpi-item label="File" class="source-browse" hidden>
+			<!-- Deliberately unfiltered, on both platforms: besides an app, a
+			     key can open any file at all, in whatever app the system
+			     opens that kind of file with. -->
+			<sdpi-file setting="appPath"></sdpi-file>
 		</sdpi-item>
+		<div class="hint source-browse" hidden>
+			Pick an app, or any other file: a document, image, video or project opens in its default app, just as if you
+			had double-clicked it. Its window is recognised by the file's name in the title bar.
+		</div>
 
 		<sdpi-item label="Selected app">
 			<sdpi-textfield setting="appPath" disabled placeholder="Nothing selected yet"></sdpi-textfield>
@@ -220,6 +225,9 @@
 		<sdpi-item label="Arguments">
 			<sdpi-textfield setting="launchArgs" placeholder="Optional command-line arguments"></sdpi-textfield>
 		</sdpi-item>
+		<div class="hint source-browse" hidden>
+			Arguments are passed to apps only, not to a file opened in its default app.
+		</div>
 		<div class="hint source-steam" hidden>
 			Passed to the game on top of the launch options set in Steam. Leave empty to use Steam's own options only.
 		</div>
