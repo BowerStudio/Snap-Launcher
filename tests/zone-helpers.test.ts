@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { runPowerShell, ZONE_HELPERS } from "../src/platform/windows/powershell.ts";
+import {
+	buildLaunchScript,
+	runPowerShell,
+	ZONE_HELPERS,
+	type LaunchConfig,
+} from "../src/platform/windows/powershell.ts";
 
 type Rect = { x: number; y: number; width: number; height: number };
 type ZoneCase = {
@@ -74,6 +79,63 @@ test("zones respect a negative-origin work area (monitor left of primary)", asyn
 	assert.deepEqual(r.left, { x: -2560, y: -400, width: 1280, height: 1360 });
 	assert.deepEqual(r.right, { x: -1280, y: -400, width: 1280, height: 1360 });
 	assert.deepEqual(r.bottomRight, { x: -1280, y: 280, width: 1280, height: 680 });
+});
+
+type CentreCase = {
+	name: string;
+	workArea: { left: number; top: number; width: number; height: number };
+	size: { width: number; height: number };
+	expected: Rect;
+};
+
+/** The centred-window contract, shared with macOS like the zone table. */
+const centreCases: CentreCase[] = JSON.parse(
+	readFileSync(new URL("./fixtures/centre-cases.json", import.meta.url), "utf8"),
+).cases;
+
+test("Windows centred-window geometry matches the shared contract", async () => {
+	// Every case in a single PowerShell spawn, keyed by its position in the table.
+	const calls = centreCases
+		.map(
+			({ workArea: a, size: s }, i) =>
+				`$out['${i}'] = Get-CentredRect ${a.left} ${a.top} ${a.width} ${a.height} ${s.width} ${s.height}`,
+		)
+		.join("\n");
+	const script = `
+${ZONE_HELPERS}
+$out = @{}
+${calls}
+Write-Output (ConvertTo-Json -InputObject $out -Compress)
+`;
+	const actual = await runPowerShell<Record<string, Rect>>(script, 30_000);
+	centreCases.forEach((c, i) => assert.deepEqual(actual[String(i)], c.expected, c.name));
+});
+
+test("a centred custom key centres on its monitor's work area, resolved at press time", () => {
+	const config: LaunchConfig = {
+		appPath: "C:\\Windows\\notepad.exe",
+		launchArgs: "",
+		titleFilter: "",
+		processName: "",
+		focusIfRunning: true,
+		positionMode: "custom",
+		monitorId: "\\\\.\\DISPLAY2",
+		zone: "full",
+		waitSeconds: 10,
+		x: 0,
+		y: 0,
+		width: 1280,
+		height: 800,
+		centreOnDisplay: true,
+		virtualDesktop: "",
+	};
+	const script = buildLaunchScript(config);
+	assert.ok(script.includes('"centreOnDisplay":true'), "the flag reaches the script");
+	assert.match(script, /\$cfg\.positionMode -eq 'custom' -and \$cfg\.centreOnDisplay/);
+	assert.match(
+		script,
+		/Resolve-TargetMonitor \$mons \$cfg\.monitorId\s+\$rect = Get-CentredRect \(\[int\]\$mon\.WorkLeft\)/,
+	);
 });
 
 const MONITORS = [

@@ -214,8 +214,11 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 			const result = await getBackend().capture(toConfig(settings));
 
 			if (result.ok) {
+				// A centred key only uses the size; the position is still saved,
+				// so unticking Centre leaves the captured spot in place.
+				const where = settings.centreOnDisplay ? "centred on the display" : `at (${result.x}, ${result.y})`;
 				const status =
-					`Saved ${result.width}×${result.height} at (${result.x}, ${result.y})` +
+					`Saved ${result.width}×${result.height} ${where}` +
 					(result.maximized ? " — window was maximized" : "");
 				await ev.action.setSettings({
 					...settings,

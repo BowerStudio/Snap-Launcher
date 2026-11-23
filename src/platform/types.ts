@@ -28,7 +28,10 @@ export type LaunchConfig = {
 	focusIfRunning: boolean;
 	/** How to position the window after launch/focus. */
 	positionMode: PositionMode;
-	/** Opaque display key from MonitorEntry.deviceName, or "primary". Zone mode only. */
+	/**
+	 * Opaque display key from MonitorEntry.deviceName, or "primary". Zone
+	 * mode, and custom mode when centreOnDisplay is set.
+	 */
 	monitorId: string;
 	/** One of the 9 snap zones. Zone mode only. */
 	zone: string;
@@ -38,6 +41,12 @@ export type LaunchConfig = {
 	y: number;
 	width: number;
 	height: number;
+	/**
+	 * Custom mode only: ignore x/y and centre a width × height window in the
+	 * work area of monitorId, worked out fresh on every press. Always false
+	 * outside custom mode.
+	 */
+	centreOnDisplay: boolean;
 	/**
 	 * Virtual desktop to run the app on (created if missing, switched to on
 	 * press). A desktop name, matched case-insensitively; "Desktop N" targets

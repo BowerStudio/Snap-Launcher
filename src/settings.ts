@@ -24,6 +24,8 @@ export type LaunchSettings = {
 	y?: number | string;
 	width?: number | string;
 	height?: number | string;
+	/** Custom mode: centre the window on monitorId at width × height instead of using x/y. */
+	centreOnDisplay?: boolean;
 	captureStatus?: string;
 	/** App the key was last auto-titled for, and the title that was applied. */
 	titledFor?: string;
@@ -97,8 +99,8 @@ function num(v: number | string | undefined, fallback: number): number {
  *
  * Mode resolution: an explicit positionMode wins; otherwise legacy keys are
  * migrated from applyPosition (true/absent → custom, false → none). Custom
- * mode without a valid captured rectangle degrades to none so a first press
- * still launches the app.
+ * mode without a valid captured rectangle (or, when centring, without a valid
+ * size) degrades to none so a first press still launches the app.
  */
 /** Normalizes Close App settings into the config the close script expects. */
 export function toCloseConfig(s: CloseSettings): CloseConfig {
@@ -117,7 +119,11 @@ export function toConfig(s: LaunchSettings): LaunchConfig {
 	const y = num(s.y, Number.NaN);
 	const width = num(s.width, 0);
 	const height = num(s.height, 0);
-	const hasRect = Number.isFinite(x) && Number.isFinite(y) && width > 0 && height > 0;
+	const hasSize = width > 0 && height > 0;
+	const hasRect = Number.isFinite(x) && Number.isFinite(y) && hasSize;
+	// A centred window only needs a size: its position is worked out per press.
+	const centre = s.centreOnDisplay === true;
+	const usable = centre ? hasSize : hasRect;
 
 	let mode: PositionMode;
 	if (
@@ -130,7 +136,7 @@ export function toConfig(s: LaunchSettings): LaunchConfig {
 	} else {
 		mode = (s.applyPosition ?? true) ? "custom" : "none";
 	}
-	if (mode === "custom" && !hasRect) {
+	if (mode === "custom" && !usable) {
 		mode = "none";
 	}
 
@@ -149,7 +155,8 @@ export function toConfig(s: LaunchSettings): LaunchConfig {
 		waitSeconds: Math.min(120, Math.max(1, Math.round(num(s.waitSeconds, 10)))),
 		x: hasRect ? Math.round(x) : 0,
 		y: hasRect ? Math.round(y) : 0,
-		width: hasRect ? Math.round(width) : 0,
-		height: hasRect ? Math.round(height) : 0,
+		width: usable ? Math.round(width) : 0,
+		height: usable ? Math.round(height) : 0,
+		centreOnDisplay: mode === "custom" && centre,
 	};
 }

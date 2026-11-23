@@ -20,6 +20,7 @@ const launchConfig: LaunchConfig = {
 	y: 0,
 	width: 0,
 	height: 0,
+	centreOnDisplay: false,
 	virtualDesktop: "",
 };
 

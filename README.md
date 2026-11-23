@@ -49,7 +49,7 @@ The settings panel is organised into five sections:
 | **Application**                | Which app to launch, and any command-line arguments.                                                     |
 | **Launch**                     | Whether to reuse an already-running window, and how long to wait for a window after launching.           |
 | **Virtual desktop**            | Optionally run the app on a named Windows 11 virtual desktop — created on the fly, switched to on press. |
-| **Window position**            | Where the window goes: a snap zone on a chosen monitor, an exact captured rectangle, or nowhere.         |
+| **Window position**            | Where the window goes: a snap zone on a chosen monitor, an exact or centred rectangle, or nowhere.       |
 | **Advanced — window matching** | Only needed when the plugin grabs the wrong window. Most keys leave these empty.                         |
 
 ## Choosing the application
@@ -106,6 +106,7 @@ Four modes, chosen with the **Positioning** dropdown:
 
 - **Monitor & snap zone** — pick a **Monitor** ("Primary monitor" follows whichever display is primary; the numbered entries pin a specific display) and a **Zone** (full screen, halves, quarters — exactly like the Windows Snap layouts). The position is worked out fresh on every key press, so it keeps working when you change resolution, scaling, or monitor arrangement. No capturing needed.
 - **Custom position (capture / manual)** — arrange the app's window exactly where you want it, then click **Capture current window position & size**. The X/Y/Width/Height fields fill in and the Status line confirms what was saved. The key restores that exact geometry from then on. (You can also type coordinates by hand.)
+    - **Centre on a display** — tick **Placement: Centre on a display at the width and height below** and pick a **Display**, and the key centres the window on that display at the size you set, ignoring X and Y. Type the **Width** and **Height**, or size the window and click **Capture** to copy its size. Like a zone, the position is worked out on every press within the display's usable area (clear of the taskbar, or the menu bar and Dock), so the window stays centred when you change resolution or rearrange monitors. A window bigger than the display is placed at its top-left corner so the title bar stays reachable. The preview under the monitor picker shows where it will land.
 - **Don't move the window** — the key becomes a plain launcher/focuser.
 - **Start minimized** — the app is launched and its window minimized as soon as it appears, without taking focus. If the app is already running (and **If already running** is ticked), its window is minimized. Handy for apps you want running in the background — chat, music, sync tools. On Windows the app is also asked to start minimized, so apps that honour that never flash up at all; on macOS it's launched in the background. A Steam game in this mode is waited for like a positioned one, so raise **Wait (seconds)** for slow starters.
 
@@ -161,6 +162,7 @@ If the chosen monitor isn't connected when you press the key (say, a laptop away
 | Positioning                                       | Window position | **Monitor & snap zone**, **Custom position**, **Don't move the window**, or **Start minimized**. The rows below it change to match the mode.                                    |
 | Monitor / Zone                                    | Window position | Zone mode only: which display and which zone. Refresh the Monitor list after plugging in a new display.                                                                         |
 | X/Y/Width/Height + Capture                        | Window position | Custom mode only: the exact window rectangle. Filled by Capture, editable by hand.                                                                                              |
+| Placement (Centre on a display) + Display         | Window position | Custom mode only: centre the window on the chosen display at the Width/Height set, instead of using X/Y. The position follows resolution and layout changes.                    |
 | Title contains                                    | Advanced        | Only match windows whose title contains this text — disambiguates multi-window apps.                                                                                            |
 | Process name                                      | Advanced        | Override for window matching when the launcher differs from the windowed process (e.g. `WindowsTerminal`). Rarely needed.                                                       |
 

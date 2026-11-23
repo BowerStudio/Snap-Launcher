@@ -34,6 +34,17 @@ function zoneRect(waLeft, waTop, waWidth, waHeight, zone) {
 }
 
 /**
+ * Centres a width x height window in the work area, keeping the size as given.
+ * Mirrors the Windows backend's Get-CentredRect: a window bigger than the work
+ * area is pinned to its top-left, so the title bar stays on screen.
+ */
+function centredRect(waLeft, waTop, waWidth, waHeight, width, height) {
+    var x = waLeft + Math.floor((waWidth - width) / 2);
+    var y = waTop + Math.floor((waHeight - height) / 2);
+    return { x: Math.max(waLeft, x), y: Math.max(waTop, y), width: width, height: height };
+}
+
+/**
  * Picks the configured display, falling back to the primary (then the first)
  * when the saved one is no longer connected. The saved setting is never
  * rewritten, so reconnecting the display restores the original behavior.
@@ -173,17 +184,31 @@ function readFrame(win) {
     return { x: Math.round(pos[0]), y: Math.round(pos[1]), width: Math.round(size[0]), height: Math.round(size[1]) };
 }
 
+/**
+ * The configured display, resolved at press time so layout and resolution
+ * changes are picked up.
+ */
+function targetMonitor(cfg) {
+    var monitors = listDisplays();
+    if (!monitors.length) fail('No displays could be found.');
+    var mon = resolveTargetMonitor(monitors, cfg.monitorId);
+    if (!mon) fail('No displays could be found.');
+    return mon;
+}
+
 /** Resolves the rectangle a launch should apply, or null for "leave it alone". */
 function targetRect(cfg) {
+    var mon;
+    if (cfg.positionMode === 'custom' && cfg.centreOnDisplay) {
+        mon = targetMonitor(cfg);
+        return centredRect(mon.workLeft, mon.workTop, mon.workWidth, mon.workHeight, cfg.width, cfg.height);
+    }
     if (cfg.positionMode === 'custom') {
         return { x: cfg.x, y: cfg.y, width: cfg.width, height: cfg.height };
     }
     if (cfg.positionMode !== 'zone') return null;
 
-    var monitors = listDisplays();
-    if (!monitors.length) fail('No displays could be found.');
-    var mon = resolveTargetMonitor(monitors, cfg.monitorId);
-    if (!mon) fail('No displays could be found.');
+    mon = targetMonitor(cfg);
     return zoneRect(mon.workLeft, mon.workTop, mon.workWidth, mon.workHeight, cfg.zone);
 }
 

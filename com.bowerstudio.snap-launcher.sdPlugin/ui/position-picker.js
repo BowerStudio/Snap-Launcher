@@ -20,6 +20,23 @@ export function zoneRect(zone) {
 	return ZONE_RECTS[zone] ?? ZONE_RECTS.full;
 }
 
+// Where a centred width x height window lands on a monitor, as percentages of
+// the screen box, or null when there is no usable size yet. Mirrors the
+// backends' centred-rect maths (a window bigger than the screen is pinned to
+// its top-left), clipped to the box. Drawn against the monitor's full bounds
+// rather than its work area, which at preview scale is the same picture.
+export function centredPreviewRect(monWidth, monHeight, width, height) {
+	if (!(monWidth > 0 && monHeight > 0 && width > 0 && height > 0)) return null;
+	const left = Math.max(0, (monWidth - width) / 2);
+	const top = Math.max(0, (monHeight - height) / 2);
+	return {
+		left: (left / monWidth) * 100,
+		top: (top / monHeight) * 100,
+		width: (Math.min(width, monWidth) / monWidth) * 100,
+		height: (Math.min(height, monHeight) / monHeight) * 100,
+	};
+}
+
 const EDGE = 0.3;
 
 // Maps a point over the screen (rx, ry as fractions 0-1) to a zone: aim within
@@ -103,18 +120,24 @@ export function init() {
 	let selectedZone = "full";
 	let selectedMonitor = "primary";
 	let hoverZone = null;
+	let placement = readPlacement();
 
 	function geomFor(value) {
 		if (value === "primary") return monitors.find((m) => m.isPrimary) || monitors[0];
 		return monitors.find((m) => m.value === value) || monitors.find((m) => m.isPrimary) || monitors[0];
 	}
 
-	function paint(zone) {
-		const r = zoneRect(zone);
+	function paintRect(r) {
+		hlEl.hidden = !r;
+		if (!r) return;
 		hlEl.style.left = r.left + "%";
 		hlEl.style.top = r.top + "%";
 		hlEl.style.width = r.width + "%";
 		hlEl.style.height = r.height + "%";
+	}
+
+	function paint(zone) {
+		paintRect(zoneRect(zone));
 	}
 
 	function renderScreen() {
@@ -122,7 +145,14 @@ export function init() {
 		const box = screenBox(g && g.width, g && g.height);
 		screenEl.style.width = box.w + "px";
 		screenEl.style.height = box.h + "px";
-		paint(hoverZone || selectedZone);
+		// Centring has no zone to pick: the screen only previews the window.
+		screenEl.classList.toggle("pp-static", placement.centred);
+		if (placement.centred) {
+			hlEl.classList.remove("pp-preview");
+			paintRect(g ? centredPreviewRect(g.width, g.height, placement.width, placement.height) : null);
+		} else {
+			paint(hoverZone || selectedZone);
+		}
 	}
 
 	function renderMonitors() {
@@ -185,6 +215,7 @@ export function init() {
 		if (btn) pickMonitor(btn.getAttribute("data-value"));
 	});
 	screenEl.addEventListener("mousemove", (e) => {
+		if (placement.centred) return;
 		const b = screenEl.getBoundingClientRect();
 		if (!b.width || !b.height) return;
 		const rx = Math.min(1, Math.max(0, (e.clientX - b.left) / b.width));
@@ -196,10 +227,10 @@ export function init() {
 	screenEl.addEventListener("mouseleave", () => {
 		hoverZone = null;
 		hlEl.classList.remove("pp-preview");
-		paint(selectedZone);
+		renderScreen();
 	});
 	screenEl.addEventListener("click", () => {
-		if (!hoverZone) return;
+		if (placement.centred || !hoverZone) return;
 		selectedZone = hoverZone;
 		hlEl.classList.remove("pp-preview");
 		paint(selectedZone);
@@ -224,7 +255,37 @@ export function init() {
 		renderScreen();
 	});
 
+	// The mode, the Centre checkbox and the size are sdpi components bound to
+	// settings, which don't re-emit changes across their shadow DOM; follow
+	// them with the same light poll launch.html uses for row visibility.
+	setInterval(() => {
+		const next = readPlacement();
+		if (placementEquals(next, placement)) return;
+		placement = next;
+		renderScreen();
+	}, 300);
+
 	client.send("sendToPlugin", { event: "getMonitors" });
+}
+
+function componentValue(selector) {
+	const el = document.querySelector(selector);
+	return el ? el.value : undefined;
+}
+
+// What the screen box should show: a centred-window preview (custom mode with
+// Centre ticked) or the zone picker.
+function readPlacement() {
+	const mode = componentValue('sdpi-select[setting="positionMode"]') || "custom";
+	return {
+		centred: mode === "custom" && componentValue('sdpi-checkbox[setting="centreOnDisplay"]') === true,
+		width: Number(componentValue('sdpi-textfield[setting="width"]')) || 0,
+		height: Number(componentValue('sdpi-textfield[setting="height"]')) || 0,
+	};
+}
+
+function placementEquals(a, b) {
+	return a.centred === b.centred && a.width === b.width && a.height === b.height;
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {

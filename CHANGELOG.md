@@ -4,6 +4,17 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Centre a window on a display.** Custom position has a new _Placement_ option, **Centre on a
+  display at the width and height below**. Pick the display, set the size (or capture it from the
+  app's window), and every press centres the window on that display's usable area at that size —
+  worked out fresh each time, so it stays centred through resolution and monitor changes. A
+  window bigger than the display is placed at its top-left so the title bar stays on screen. The
+  key settings preview where the window will land. Works on Windows and macOS.
+
 ## [1.5.0] — 2026-11-07
 
 ### Added

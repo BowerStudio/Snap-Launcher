@@ -1,0 +1,53 @@
+{
+	"comment": "Shared centred-window contract for custom mode with Centre ticked. The Windows (PowerShell Get-CentredRect) and macOS (JXA centredRect) implementations are both asserted against this table. The size is kept as given; odd leftovers round towards the top-left; a window bigger than the work area is pinned to its top-left so the title bar stays on screen.",
+	"cases": [
+		{
+			"name": "even fit on a 1920x1040 work area at the origin",
+			"workArea": { "left": 0, "top": 0, "width": 1920, "height": 1040 },
+			"size": { "width": 1280, "height": 800 },
+			"expected": { "x": 320, "y": 120, "width": 1280, "height": 800 }
+		},
+		{
+			"name": "odd leftover rounds towards the top-left",
+			"workArea": { "left": 0, "top": 0, "width": 1921, "height": 1041 },
+			"size": { "width": 1280, "height": 800 },
+			"expected": { "x": 320, "y": 120, "width": 1280, "height": 800 }
+		},
+		{
+			"name": "work area below a top taskbar or menu bar",
+			"workArea": { "left": 0, "top": 25, "width": 1512, "height": 919 },
+			"size": { "width": 1000, "height": 700 },
+			"expected": { "x": 256, "y": 134, "width": 1000, "height": 700 }
+		},
+		{
+			"name": "secondary monitor right of the primary",
+			"workArea": { "left": 2560, "top": 0, "width": 1920, "height": 1032 },
+			"size": { "width": 1600, "height": 900 },
+			"expected": { "x": 2720, "y": 66, "width": 1600, "height": 900 }
+		},
+		{
+			"name": "negative-origin monitor left of and above the primary",
+			"workArea": { "left": -2560, "top": -400, "width": 2560, "height": 1400 },
+			"size": { "width": 1920, "height": 1080 },
+			"expected": { "x": -2240, "y": -240, "width": 1920, "height": 1080 }
+		},
+		{
+			"name": "exactly the size of the work area",
+			"workArea": { "left": 0, "top": 0, "width": 1920, "height": 1040 },
+			"size": { "width": 1920, "height": 1040 },
+			"expected": { "x": 0, "y": 0, "width": 1920, "height": 1040 }
+		},
+		{
+			"name": "bigger than the work area is pinned to its top-left, size kept",
+			"workArea": { "left": 1920, "top": 0, "width": 1280, "height": 984 },
+			"size": { "width": 1600, "height": 1200 },
+			"expected": { "x": 1920, "y": 0, "width": 1600, "height": 1200 }
+		},
+		{
+			"name": "wider but shorter than the work area stays centred top to bottom",
+			"workArea": { "left": 0, "top": 0, "width": 1920, "height": 1040 },
+			"size": { "width": 2200, "height": 600 },
+			"expected": { "x": 0, "y": 220, "width": 2200, "height": 600 }
+		}
+	]
+}
