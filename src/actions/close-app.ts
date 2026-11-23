@@ -10,6 +10,7 @@ import type { JsonValue } from "@elgato/utils";
 
 import { getBackend } from "../platform";
 import { toCloseConfig, type CloseSettings } from "../settings";
+import { wrapTitle } from "../titles";
 import { applyAutoTitle, sendInstalledApps, sendRunningApps, sendSteamGames } from "./pickers";
 
 const logger = streamDeck.logger.createScope("CloseApp");
@@ -50,7 +51,7 @@ export class CloseApp extends SingletonAction<CloseSettings> {
 		// Plugin-set titles don't survive Stream Deck restarts; re-apply ours.
 		// Stream Deck ignores this whenever the user has typed a custom Title.
 		if (ev.action.isKey() && settings.autoTitle) {
-			await ev.action.setTitle(settings.autoTitle);
+			await ev.action.setTitle(wrapTitle(settings.autoTitle));
 		}
 	}
 

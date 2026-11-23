@@ -27,7 +27,7 @@ export type LaunchSettings = {
 	/** Custom mode: centre the window on monitorId at width × height instead of using x/y. */
 	centreOnDisplay?: boolean;
 	captureStatus?: string;
-	/** App the key was last auto-titled for, and the title that was applied. */
+	/** App the key was last auto-titled for, and its name as one line (the key shows it wrapped). */
 	titledFor?: string;
 	autoTitle?: string;
 	/**
@@ -67,7 +67,7 @@ export type CloseSettings = {
 	waitSeconds?: number | string;
 	/** Status line shown in the PI. */
 	captureStatus?: string;
-	/** App the key was last auto-titled for, and the title that was applied. */
+	/** App the key was last auto-titled for, and its name as one line (the key shows it wrapped). */
 	titledFor?: string;
 	autoTitle?: string;
 };

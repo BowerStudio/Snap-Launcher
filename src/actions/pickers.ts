@@ -3,6 +3,7 @@ import type { DidReceiveSettingsEvent } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 
 import { getBackend, type AppIcon, type InstalledApp, type RunningApp } from "../platform";
+import { wrapTitle } from "../titles";
 
 const logger = streamDeck.logger.createScope("Pickers");
 
@@ -94,6 +95,11 @@ type TitledSettings = JsonObject & { appPath?: string; titledFor?: string; autoT
  * Auto-title the key with the app's name when a different app is picked.
  * setTitle only shows while the user's own Title field is empty, so a
  * manually entered title always wins.
+ *
+ * A name too long for one line is broken into lines on the key, but stored as
+ * the plain name: the lines are worked out each time the title is shown, so
+ * keys titled before wrapping existed, or before it changed, pick it up the
+ * next time Stream Deck starts.
  */
 export async function applyAutoTitle<T extends TitledSettings>(ev: DidReceiveSettingsEvent<T>): Promise<void> {
 	const settings = ev.payload.settings;
@@ -108,7 +114,7 @@ export async function applyAutoTitle<T extends TitledSettings>(ev: DidReceiveSet
 	}
 
 	if (ev.action.isKey()) {
-		await ev.action.setTitle(name);
+		await ev.action.setTitle(wrapTitle(name));
 	}
 	await ev.action.setSettings({ ...settings, titledFor: appPath, autoTitle: name });
 }

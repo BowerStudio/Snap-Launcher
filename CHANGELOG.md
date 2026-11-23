@@ -6,6 +6,16 @@ to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Long key titles wrap onto lines.** When a key is titled with an app's or file's name that is
+  too wide for one line, the name is now broken onto lines instead of running off both edges of
+  the key: between words where possible, then at a hyphen, underscore, dot or capital letter
+  inside a long word (`MyGame.uproject` becomes `MyGame.` / `uproject`), and only as a last resort
+  in the middle of a word. Up to three lines; a name longer still ends with an ellipsis. Keys
+  titled before this pick it up the next time Stream Deck starts, and a Title you type yourself
+  is never touched.
+
 ## [1.6.0] — 2026-11-23
 
 ### Added
