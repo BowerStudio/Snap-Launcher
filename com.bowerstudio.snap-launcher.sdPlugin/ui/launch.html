@@ -98,6 +98,9 @@
 			.pp-highlight.pp-preview {
 				background: rgba(26, 140, 255, 0.18);
 			}
+			.pp-screen.pp-static {
+				cursor: default;
+			}
 			.ip-panel {
 				margin: 4px 0 6px 6px;
 			}
@@ -276,7 +279,17 @@
 			The app's window is minimized as soon as it appears — and an already-running window is minimized too.
 		</div>
 
-		<div class="zone-only" hidden>
+		<sdpi-item label="Placement" class="custom-only">
+			<sdpi-checkbox
+				setting="centreOnDisplay"
+				label="Centre on a display at the width and height below"
+			></sdpi-checkbox>
+		</sdpi-item>
+
+		<!-- The display picker serves zone mode and centred custom mode; both
+		     write the same monitorId. In centred mode the screen box previews
+		     the window instead of picking a zone. -->
+		<div class="display-only" hidden>
 			<sdpi-item label="Display">
 				<select id="pp-display"></select>
 			</sdpi-item>
@@ -290,7 +303,9 @@
 					<div id="pp-highlight" class="pp-highlight"></div>
 				</div>
 			</div>
-			<div class="hint">Aim at an edge for a half, a corner for a quarter, the centre for full screen.</div>
+			<div class="hint zone-only" hidden>
+				Aim at an edge for a half, a corner for a quarter, the centre for full screen.
+			</div>
 		</div>
 
 		<sdpi-item class="custom-only">
@@ -298,15 +313,19 @@
 				Capture current window position &amp; size
 			</sdpi-button>
 		</sdpi-item>
-		<div class="hint custom-only">
+		<div class="hint custom-xy-only" hidden>
 			Arrange the app's window where you want it, then click Capture — or type the numbers below.
 		</div>
+		<div class="hint centre-only" hidden>
+			The window is centred on that display's usable area on every press, so it stays centred when the resolution
+			or arrangement changes. Type the size below, or size the app's window and click Capture to copy its size.
+		</div>
 
-		<sdpi-item label="X" class="custom-only">
+		<sdpi-item label="X" class="custom-xy-only" hidden>
 			<sdpi-textfield setting="x" placeholder="e.g. 2560 (negative = monitor left of primary)"></sdpi-textfield>
 		</sdpi-item>
 
-		<sdpi-item label="Y" class="custom-only">
+		<sdpi-item label="Y" class="custom-xy-only" hidden>
 			<sdpi-textfield setting="y" placeholder="e.g. 0"></sdpi-textfield>
 		</sdpi-item>
 
@@ -374,8 +393,15 @@
 			function applyVisibility() {
 				const modeSelect = document.querySelector('sdpi-select[setting="positionMode"]');
 				const mode = (modeSelect && modeSelect.value) || "custom";
+				const centreBox = document.querySelector('sdpi-checkbox[setting="centreOnDisplay"]');
+				const centred = mode === "custom" && !!(centreBox && centreBox.value === true);
 				document.querySelectorAll(".zone-only").forEach((el) => (el.hidden = mode !== "zone"));
 				document.querySelectorAll(".custom-only").forEach((el) => (el.hidden = mode !== "custom"));
+				document
+					.querySelectorAll(".custom-xy-only")
+					.forEach((el) => (el.hidden = mode !== "custom" || centred));
+				document.querySelectorAll(".centre-only").forEach((el) => (el.hidden = !centred));
+				document.querySelectorAll(".display-only").forEach((el) => (el.hidden = mode !== "zone" && !centred));
 				document.querySelectorAll(".minimize-only").forEach((el) => (el.hidden = mode !== "minimize"));
 
 				const sourceSelect = document.querySelector('sdpi-select[setting="appSource"]');

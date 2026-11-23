@@ -400,6 +400,7 @@ function Resolve-PathPackage([string]$exePath) {
  * Pure positioning helpers (no Win32 interop), exported so tests can exercise
  * them directly. Get-ZoneRect maps a snap zone onto a work area; right/bottom
  * zones extend to the work-area edge so halves tile exactly on odd dimensions.
+ * Get-CentredRect centres a window of a given size in a work area.
  * Resolve-TargetMonitor picks the configured monitor from a list, falling back
  * to the primary (then the first) when the saved monitor is absent.
  */
@@ -420,6 +421,17 @@ function Get-ZoneRect([int]$waLeft, [int]$waTop, [int]$waWidth, [int]$waHeight, 
         'bottomRight' { return @{ x = $midX; y = $midY; width = ($right - $midX); height = ($bottom - $midY) } }
         default       { return @{ x = $waLeft; y = $waTop; width = $waWidth; height = $waHeight } }
     }
+}
+
+# Centres a width x height window in the work area, keeping the size as given.
+# A window bigger than the work area is pinned to its top-left instead, so the
+# title bar stays on screen and the window can still be dragged.
+function Get-CentredRect([int]$waLeft, [int]$waTop, [int]$waWidth, [int]$waHeight, [int]$width, [int]$height) {
+    $x = $waLeft + [int][Math]::Floor(($waWidth - $width) / 2)
+    $y = $waTop + [int][Math]::Floor(($waHeight - $height) / 2)
+    if ($x -lt $waLeft) { $x = $waLeft }
+    if ($y -lt $waTop) { $y = $waTop }
+    return @{ x = $x; y = $y; width = $width; height = $height }
 }
 
 function Resolve-TargetMonitor($monitors, [string]$monitorId) {
@@ -1803,7 +1815,20 @@ try {
     }
 
     $rect = $null
-    if ($cfg.positionMode -eq 'custom') {
+    if ($cfg.positionMode -eq 'custom' -and $cfg.centreOnDisplay) {
+        $mons = @([MonitorFinder]::ListAll())
+        if ($mons.Count -gt 0) {
+            # Like a zone, resolved at press time, so the window stays centred
+            # through resolution and arrangement changes. The size is applied
+            # verbatim, as for any custom rectangle: the invisible borders are
+            # symmetric left and right, so the visible frame is centred exactly
+            # side to side and to within a few pixels top to bottom.
+            $mon = Resolve-TargetMonitor $mons $cfg.monitorId
+            $rect = Get-CentredRect ([int]$mon.WorkLeft) ([int]$mon.WorkTop) ([int]$mon.WorkWidth) ([int]$mon.WorkHeight) ([int]$cfg.width) ([int]$cfg.height)
+        } else {
+            throw 'No monitors could be enumerated.'
+        }
+    } elseif ($cfg.positionMode -eq 'custom') {
         $rect = @{ x = [int]$cfg.x; y = [int]$cfg.y; width = [int]$cfg.width; height = [int]$cfg.height }
     } elseif ($cfg.positionMode -eq 'zone') {
         $mons = @([MonitorFinder]::ListAll())

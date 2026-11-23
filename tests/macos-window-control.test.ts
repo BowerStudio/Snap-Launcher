@@ -34,6 +34,7 @@ const launch = (over: Partial<LaunchConfig> = {}): LaunchConfig => ({
 	y: 0,
 	width: 0,
 	height: 0,
+	centreOnDisplay: false,
 	virtualDesktop: "",
 	...over,
 });
@@ -107,6 +108,46 @@ test("an unknown zone falls back to filling the work area", () => {
 	assert.deepEqual(jxaZoneRect(0, 0, 1920, 1040, "nonsense"), { x: 0, y: 0, width: 1920, height: 1040 });
 });
 
+/* ------------------------------ centred windows ---------------------------- */
+
+type CentreCase = {
+	name: string;
+	workArea: { left: number; top: number; width: number; height: number };
+	size: { width: number; height: number };
+	expected: ZoneRect;
+};
+
+const centreCases: CentreCase[] = JSON.parse(
+	readFileSync(new URL("./fixtures/centre-cases.json", import.meta.url), "utf8"),
+).cases;
+
+function jxaCentredRect(area: CentreCase["workArea"], size: CentreCase["size"]): ZoneRect {
+	const sandbox = { Math, result: null as unknown };
+	vm.runInNewContext(
+		`${ZONE_HELPERS}\nresult = centredRect(${area.left}, ${area.top}, ${area.width}, ${area.height}, ${size.width}, ${size.height});`,
+		sandbox,
+	);
+	return JSON.parse(JSON.stringify(sandbox.result)) as ZoneRect;
+}
+
+for (const c of centreCases) {
+	test(`macOS centred-window geometry matches the shared contract: ${c.name}`, () => {
+		assert.deepEqual(jxaCentredRect(c.workArea, c.size), c.expected);
+	});
+}
+
+test("a centred custom key centres on its display's work area instead of using x/y", () => {
+	const script = buildLaunchScript(
+		launch({ positionMode: "custom", centreOnDisplay: true, monitorId: "724043442", width: 1000, height: 700 }),
+	);
+	assert.ok(script.includes('"centreOnDisplay":true'), "the flag reaches the script");
+	assert.match(script, /cfg\.positionMode === 'custom' && cfg\.centreOnDisplay/);
+	assert.match(
+		script,
+		/centredRect\(mon\.workLeft, mon\.workTop, mon\.workWidth, mon\.workHeight, cfg\.width, cfg\.height\)/,
+	);
+});
+
 /* ----------------------------- monitor resolution -------------------------- */
 
 type FakeMonitor = { deviceName: string; isPrimary: boolean };
@@ -152,6 +193,10 @@ const allScripts: [string, string][] = [
 	[
 		"launch (custom rect)",
 		buildLaunchScript(launch({ positionMode: "custom", x: 10, y: 20, width: 800, height: 600 })),
+	],
+	[
+		"launch (custom, centred)",
+		buildLaunchScript(launch({ positionMode: "custom", centreOnDisplay: true, width: 800, height: 600 })),
 	],
 	["launch (no positioning)", buildLaunchScript(launch({ positionMode: "none" }))],
 	["launch (minimized)", buildLaunchScript(launch({ positionMode: "minimize" }))],

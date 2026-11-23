@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+	centredPreviewRect,
 	layoutMonitors,
 	zoneFromPoint,
 	zoneRect,
@@ -31,6 +32,22 @@ test("zoneRect returns percentage rects and falls back to full", () => {
 	assert.deepEqual(zoneRect("right"), { left: 50, top: 0, width: 50, height: 100 });
 	assert.deepEqual(zoneRect("bottomRight"), { left: 50, top: 50, width: 50, height: 50 });
 	assert.deepEqual(zoneRect("nonsense"), zoneRect("full"));
+});
+
+test("centredPreviewRect centres the window as percentages of the screen", () => {
+	assert.deepEqual(centredPreviewRect(1920, 1080, 960, 540), { left: 25, top: 25, width: 50, height: 50 });
+	assert.deepEqual(centredPreviewRect(2000, 1000, 2000, 1000), { left: 0, top: 0, width: 100, height: 100 });
+});
+
+test("centredPreviewRect pins an oversize window to the top-left and clips it to the screen", () => {
+	assert.deepEqual(centredPreviewRect(1000, 1000, 1500, 500), { left: 0, top: 25, width: 100, height: 50 });
+	assert.deepEqual(centredPreviewRect(1000, 1000, 2000, 2000), { left: 0, top: 0, width: 100, height: 100 });
+});
+
+test("centredPreviewRect shows nothing until there is a size and a monitor", () => {
+	assert.equal(centredPreviewRect(1920, 1080, 0, 600), null);
+	assert.equal(centredPreviewRect(1920, 1080, 800, Number.NaN), null);
+	assert.equal(centredPreviewRect(undefined, undefined, 800, 600), null);
 });
 
 const M = (over) => ({

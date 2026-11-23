@@ -40,6 +40,53 @@ test("custom mode without a valid rect degrades to none (first press still launc
 	assert.equal(c.positionMode, "none");
 });
 
+test("centred custom mode needs only a size, not x/y", () => {
+	const c = toConfig({
+		appPath: "a.exe",
+		positionMode: "custom",
+		centreOnDisplay: true,
+		monitorId: "\\\\.\\DISPLAY2",
+		width: "1280",
+		height: "800",
+	});
+	assert.equal(c.positionMode, "custom");
+	assert.equal(c.centreOnDisplay, true);
+	assert.equal(c.monitorId, "\\\\.\\DISPLAY2");
+	assert.deepEqual([c.width, c.height], [1280, 800]);
+	assert.deepEqual([c.x, c.y], [0, 0], "no position is needed or invented");
+});
+
+test("centred custom mode keeps a captured x/y without using it", () => {
+	const c = toConfig({ appPath: "a.exe", positionMode: "custom", centreOnDisplay: true, ...RECT });
+	assert.equal(c.centreOnDisplay, true);
+	assert.deepEqual([c.x, c.y, c.width, c.height], [100, 50, 800, 600]);
+});
+
+test("centred custom mode without a size degrades to none", () => {
+	const c = toConfig({ appPath: "a.exe", positionMode: "custom", centreOnDisplay: true, x: "10", y: "10" });
+	assert.equal(c.positionMode, "none");
+	assert.equal(c.centreOnDisplay, false);
+	assert.deepEqual([c.width, c.height], [0, 0]);
+});
+
+test("unticked centre keeps the plain rectangle behaviour", () => {
+	const c = toConfig({
+		appPath: "a.exe",
+		positionMode: "custom",
+		centreOnDisplay: false,
+		width: "800",
+		height: "600",
+	});
+	assert.equal(c.positionMode, "none", "a size alone is not a rectangle");
+	assert.equal(c.centreOnDisplay, false);
+});
+
+test("centring only applies in custom mode", () => {
+	const c = toConfig({ appPath: "a.exe", positionMode: "zone", centreOnDisplay: true, zone: "left", ...RECT });
+	assert.equal(c.positionMode, "zone");
+	assert.equal(c.centreOnDisplay, false);
+});
+
 test("zone mode needs no rect", () => {
 	const c = toConfig({ appPath: "a.exe", positionMode: "zone", zone: "bottomRight" });
 	assert.equal(c.positionMode, "zone");
