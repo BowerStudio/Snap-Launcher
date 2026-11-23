@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-11-23
+
 ### Added
 
 - **Centre a window on a display.** Custom position has a new _Placement_ option, **Centre on a
