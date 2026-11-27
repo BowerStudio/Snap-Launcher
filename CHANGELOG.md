@@ -4,7 +4,17 @@ All notable changes to the **Snap Launcher** Stream Deck plugin are documented i
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and the project aims
 to follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.6.1] — Released 2026-11-27
+
+### Changed
+
+- **Long key titles wrap onto lines.** When a key is titled with an app's or file's name that is
+  too wide for one line, the name is now broken onto lines instead of running off both edges of
+  the key: between words where possible, then at a hyphen, underscore, dot or capital letter
+  inside a long word (`Epic Games Launcher` becomes `Epic Games` / `Launcher`), and only as a last resort
+  in the middle of a word. Up to three lines; a name longer still ends with an ellipsis. Keys
+  titled before this pick it up the next time Stream Deck starts, and a Title you type yourself
+  is never touched.
 
 ## [1.6.0] — 2026-11-23
 

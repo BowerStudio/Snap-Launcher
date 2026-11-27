@@ -11,6 +11,7 @@ import type { JsonValue } from "@elgato/utils";
 import { getBackend, type AdminHelperStatus } from "../platform";
 import { toMonitorItems, type MonitorItem } from "../monitors";
 import { toConfig, type LaunchSettings } from "../settings";
+import { wrapTitle } from "../titles";
 import {
 	applyAutoIcon,
 	applyAutoTitle,
@@ -66,7 +67,7 @@ export class LaunchApp extends SingletonAction<LaunchSettings> {
 		// set a Title or an image of their own.
 		if (ev.action.isKey()) {
 			if (settings.autoTitle) {
-				await ev.action.setTitle(settings.autoTitle);
+				await ev.action.setTitle(wrapTitle(settings.autoTitle));
 			}
 			if (settings.autoImage) {
 				await ev.action.setImage(settings.autoImage);
